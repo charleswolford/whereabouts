@@ -1,0 +1,26 @@
+{
+ "n": 33755,
+ "dtype": "uint8",
+ "unreachable": 255,
+ "max_minutes": 120,
+ "mode": "public transport (bus, coach, tram, metro, ferry and National Rail) and walking",
+ "departure": "2026-10-20 08:00, 1-hour window, median",
+ "gtfs": [
+  "Bus Open Data Service (DfT) England GTFS, version 20261013_024335",
+  "National Rail timetable (National Rail Data Portal, Rail Delivery Group), RJTTF988, converted to GTFS for 2026-10-20"
+ ],
+ "osm": "OpenStreetMap England extract (Geofabrik), 2026-10-12",
+ "missing_modes": [
+  "Sheffield Supertram",
+  "Nottingham Express Transit"
+ ],
+ "layout": "row = destination fid - 1, column = origin fid - 1; byte offset = (dest_fid-1)*n + (origin_fid-1)",
+ "mode_short": "by bus, train and walking",
+ "bus_only_file": "tt_bus.bin",
+ "bus_only_mode_short": "by bus and walking",
+ "share_reachable": {
+  "with_rail": 0.0642,
+  "bus_only": 0.0324
+ },
+ "packing": "web/data/<name>_rows.bin holds one zlib-deflated row per destination in fid order; web/data/<name>_index.bin is n + 1 little-endian uint32 byte offsets, so row d (dest fid d + 1) is bytes offsets[d] to offsets[d + 1] - 1"
+}

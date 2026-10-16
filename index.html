@@ -1,0 +1,2105 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whereabouts</title>
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-1.5 -1.5 17 17'%3E%3Crect x='-1.5' y='-1.5' width='17' height='17' rx='3.5' fill='%23010102'/%3E%3Cmask id='c' maskUnits='userSpaceOnUse' x='0' y='0' width='14' height='14'%3E%3Crect width='14' height='14' fill='%23fff'/%3E%3Cpath d='M4 0 4.5 3.5 10.5 4.5 10 10.5 3.5 9.5 4.5 3.5M10.5 4.5 14 3.5M10 10.5 11 14M3.5 9.5 0 10.5' fill='none' stroke='%23000' stroke-width='1.3' stroke-linejoin='round'/%3E%3C/mask%3E%3Cg mask='url(%23c)'%3E%3Cpath d='M0 0h14v14H0z' fill='%234b4e55'/%3E%3Cpath d='M4.5 3.5 10.5 4.5 10 10.5 3.5 9.5z' fill='%235e6ad2'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&display=swap" rel="stylesheet">
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/pmtiles@3.2.1/dist/pmtiles.js"></script>
+<style>
+  /* Tokens from DESIGN.md (Linear design language) */
+  :root {
+    --primary: #5e6ad2;
+    --primary-hover: #828fff;
+    --primary-focus: #5e69d1;
+    --ink: #f7f8f8;
+    --ink-muted: #d0d6e0;
+    --ink-subtle: #8a8f98;
+    --ink-tertiary: #62666d;
+    --canvas: #010102;
+    --surface-1: #0f1011;
+    --surface-2: #141516;
+    --surface-3: #18191a;
+    --hairline: #23252a;
+    --hairline-strong: #34343a;
+    --sans: "Inter", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; background: var(--canvas); color: var(--ink);
+    font: 400 14px/1.5 var(--sans); font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased;
+  }
+  #map { position: absolute; inset: 0; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--primary-focus) 50%, transparent); outline-offset: 1px; }
+
+  aside {
+    position: absolute; top: 16px; left: 16px; bottom: 16px; width: 344px; z-index: 2;
+    background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--hairline-strong) transparent;
+  }
+  .scroll { padding: 24px 24px 0; }
+
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .home { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 2px 4px 2px 0; margin: 0;
+    font: inherit; color: inherit; letter-spacing: inherit; cursor: pointer; border-radius: 6px; }
+  /* The mark: five neighbourhood cells cut apart by canvas gaps, the one that fits lit */
+  .logo .lit { transition: fill .15s; }
+  .home:hover .logo .lit, .home:focus-visible .logo .lit { fill: var(--primary-hover); }
+  .clear-btn { color: var(--ink-subtle); }
+  .brand svg { display: block; }
+  h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; margin: 0; }
+  .lede { color: var(--ink-subtle); margin: 8px 0 24px; letter-spacing: -0.05px; }
+
+  .search input {
+    width: 100%; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 8px;
+    color: var(--ink); font: 400 14px var(--sans); padding: 9px 12px; outline: none; text-transform: uppercase;
+  }
+  .search input::placeholder { text-transform: none; color: var(--ink-subtle); }
+  .search input:focus { border-color: var(--hairline-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-focus) 50%, transparent); }
+
+  section { padding: 18px 0; border-top: 1px solid var(--hairline); }
+  .label { color: var(--ink-subtle); font-size: 13px; font-weight: 500; letter-spacing: 0.1px; margin: 0 0 12px; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .label b { white-space: nowrap; }
+  .label b { color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+
+  select {
+    display: block; width: 100%; margin-top: 0; background: var(--canvas); color: var(--ink);
+    border: 1px solid var(--hairline); border-radius: 8px; font: 400 14px var(--sans); padding: 9px 10px; outline: none;
+  }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: none; margin: 0; cursor: pointer; }
+  input[type=range]::-webkit-slider-runnable-track { height: 2px; border-radius: 2px;
+    background: linear-gradient(to right, var(--primary) var(--fill, 100%), var(--hairline-strong) var(--fill, 100%)); }
+  input[type=range]::-moz-range-track { height: 2px; background: var(--hairline-strong); }
+  input[type=range]::-moz-range-progress { height: 2px; background: var(--primary); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -6px; border-radius: 50%;
+    background: var(--ink); border: 0; box-shadow: 0 0 0 4px var(--surface-1); }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--ink); border: 0; }
+  input[type=range]:hover::-webkit-slider-thumb { background: #fff; }
+
+  .filters .filter + .filter { margin-top: 14px; }
+  .filters .label { margin-bottom: 4px; }
+  .legend-note { display: flex; align-items: center; gap: 8px; margin: 10px 0 0; color: var(--ink-subtle); font-size: 12px; }
+  .layer-about { margin: 10px 0 0; color: var(--ink-subtle); font-size: 12px; line-height: 1.4; text-wrap: pretty; }
+  .colour .about-more { display: none; font-size: 12px; flex: none; scroll-margin-bottom: 120px; }
+  .legend-note i { width: 22px; height: 6px; border-radius: 1px; background: #16171b; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+  .legend-note[hidden] { display: none; }
+  .facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 12px; margin: 0 0 8px; font-size: 13px; }
+  .facts dt { color: var(--ink-subtle); white-space: nowrap; }
+  .facts.around { margin-bottom: 24px; }
+  .facts dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .facts dd span { display: block; color: var(--ink-subtle); font-size: 12px; margin-top: 2px; }
+  .facts dd.amen span, .facts dd .pt span { display: inline; color: inherit; font-size: inherit; margin-top: 0; }
+  .facts dd .km { white-space: nowrap; }
+  .facts dd .pt { display: block; margin-top: 0; color: var(--ink); font-size: inherit; }
+  .facts dd .pt + .pt { margin-top: 4px; }
+  .facts dd .pt .mode { color: var(--ink-subtle); }
+  .legend { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px; height: 6px; margin: 16px 0 6px; }
+  .legend span { border-radius: 1px; transition: opacity .2s; }
+  .legend span.off { opacity: .16; }
+  .legend span.sel { position: relative; box-shadow: 0 0 0 1.5px var(--surface-1), 0 0 0 2.5px var(--ink); }
+  /* Count line: list button, near-miss toggle */
+  .count p { display: block; }
+  .count-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 6px; }
+  .count-actions > * { white-space: nowrap; }
+  .list-btn { display: inline-block; background: none; border: 0; padding: 0; font: inherit; font-size: 13px;
+    color: var(--ink-muted); cursor: pointer; text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+  .list-btn:hover { color: var(--ink); text-decoration-color: var(--ink-subtle); }
+  .near-toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink-subtle); }
+  .near-toggle input { accent-color: var(--ink-muted); margin: 0; width: 13px; height: 13px; }
+
+  /* Pills: small text buttons in the panels */
+  .pill { display: inline-flex; align-items: center; gap: 6px; background: var(--surface-3); color: var(--ink); border: 1px solid var(--hairline);
+    border-radius: 8px; font: 500 12px var(--sans); padding: 5px 12px; cursor: pointer; }
+  .pill:hover { border-color: var(--hairline-strong); }
+  .pill.quiet { background: none; color: var(--ink-subtle); }
+  .pill.quiet:hover { color: var(--ink); }
+  .pill b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .shortlist-btn { margin-left: auto; }
+  .shortlist-btn[hidden] { display: none; }
+
+  /* Right box: heading row with bookmark, back link */
+  #detail .head { display: flex; align-items: flex-start; gap: 8px; padding-right: 32px; }
+  #detail .head h2 { padding-right: 0; flex: 1; }
+  .save { flex: none; width: 28px; height: 28px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px;
+    color: var(--ink-subtle); cursor: pointer; }
+  .save:hover { background: var(--surface-3); color: var(--ink); }
+  .save[aria-pressed="true"] { color: var(--primary-hover); }
+  .save[aria-pressed="true"] svg path { fill: currentColor; }
+  .back { display: inline-flex; align-items: center; gap: 4px; background: none; border: 0; padding: 0; margin: 0 0 10px;
+    font: 500 12px var(--sans); color: var(--ink-subtle); cursor: pointer; }
+  .back:hover { color: var(--ink); }
+
+  /* School list: the same marks as the map points, filled when positively rated */
+  .mark { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ink); }
+  .mark.ok { background: var(--ink); box-shadow: none; }
+  .mark.unk { box-shadow: inset 0 0 0 1px var(--ink-tertiary); }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .where .mark { width: 7px; height: 7px; margin: 0 5px 1px 0; vertical-align: middle; }
+  .schools { list-style: none; margin: 0 -8px; padding: 0; }
+  .school { display: flex; gap: 10px; padding: 9px 8px; border-radius: 6px; cursor: default; }
+  .school.hl { background: var(--surface-2); }
+  .school .mark { margin-top: 6px; }
+  .s-body { flex: 1; min-width: 0; display: grid; gap: 2px; }
+  .s-top { display: flex; align-items: baseline; gap: 12px; }
+  .s-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); }
+  .s-km { flex: none; font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
+  .s-out { font-size: 12px; color: var(--ink-muted); }
+  .s-out span { color: var(--ink-subtle); }
+  .s-out .s-era { white-space: nowrap; }
+  .s-links { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; margin-top: 2px; }
+  .s-links a, .fine a { color: var(--ink-subtle); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; border-radius: 4px; }
+  .s-links a:hover, .fine a:hover { color: var(--ink); text-decoration-color: var(--ink-subtle); }
+
+  /* Results list */
+  .list-tools { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 13px; color: var(--ink-subtle); }
+  .list-tools select { width: auto; flex: 1; font-size: 13px; padding: 6px 8px; }
+  .results { list-style: none; margin: 0 0 8px; padding: 0; border-top: 1px solid var(--hairline); }
+  .results li { display: flex; align-items: center; border-bottom: 1px solid var(--hairline); }
+  .result { flex: 1; display: grid; gap: 2px; text-align: left; background: none; border: 0; padding: 9px 4px; font: inherit; color: inherit; cursor: pointer; border-radius: 6px; }
+  .result:hover { background: var(--surface-2); }
+  .r-name { font-size: 13px; font-weight: 500; color: var(--ink); }
+  .r-where { font-weight: 400; color: var(--ink-subtle); font-size: 12px; white-space: nowrap; }
+  .c-where { display: block; font-weight: 400; font-size: 12px; color: var(--ink-subtle); text-decoration: none; margin-top: 2px; }
+  .part { background: none; border: 0; padding: 0; font: inherit; color: inherit; text-decoration: underline dotted; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; cursor: pointer; }
+  .part[aria-expanded="true"] { color: var(--ink-muted); }
+  .part-note { color: var(--ink-subtle); font-size: 12px; margin: -8px 0 16px; }
+  .tok { white-space: nowrap; }
+  .r-meta { font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
+  .r-why { font-size: 12px; color: var(--ink-muted); }
+  .more { display: block; width: 100%; margin: 4px 0 16px; background: none; border: 1px solid var(--hairline); border-radius: 8px; padding: 7px;
+    font: 500 12px var(--sans); color: var(--ink-subtle); cursor: pointer; }
+  .more:hover { color: var(--ink); border-color: var(--hairline-strong); }
+  .near-head { margin-top: 20px; }
+  .similar-link { font-size: 12px; font-weight: 400; color: var(--ink-subtle); }
+  .sim-toggle { margin: 0 0 12px; font-size: 13px; }
+
+  /* Shortlist comparison */
+  @media (min-width: 641px) { .profile.wide { width: min(720px, calc(100% - 344px - 64px)); } }
+  .compare { display: grid; grid-template-columns: max-content repeat(var(--cols), minmax(118px, 1fr)); font-size: 13px; overflow-x: auto; margin-bottom: 16px; }
+  .compare > div { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--hairline); }
+  .c-label { color: var(--ink-subtle); white-space: nowrap; padding-right: 16px !important; position: sticky; left: 0; z-index: 1; background: var(--surface-1); }
+  .c-cell { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .c-cell span { display: block; color: var(--ink-subtle); font-size: 12px; margin-top: 2px; }
+  .c-cell small { color: var(--ink-subtle); font-size: 12px; }
+  .c-head { display: flex; align-items: flex-start; gap: 4px; }
+  .c-name { background: none; border: 0; padding: 0; font: 600 13px var(--sans); color: var(--ink); text-align: left; cursor: pointer;
+    text-decoration: underline dotted; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; }
+  .c-remove { margin-left: auto; flex: none; width: 20px; height: 20px; display: grid; place-items: center; background: none; border: 0; border-radius: 6px; color: var(--ink-subtle); cursor: pointer; padding: 0; }
+  .c-remove:hover { color: var(--ink); }
+  .c-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* Travel places */
+  .travel { margin-bottom: 18px; }
+  .travel .label .mode { color: var(--ink-subtle); font-weight: 400; font-size: 12px; }
+  .place { margin-bottom: 12px; }
+  .place .label { margin-bottom: 4px; }
+  .place .label span { color: var(--ink); }
+  .place .label b { margin-left: auto; }
+  .place-remove { align-self: center; flex: none; width: 20px; height: 20px; margin-right: -4px; display: grid; place-items: center; background: none; border: 0; border-radius: 6px; padding: 0; color: var(--ink-subtle); cursor: pointer; }
+  .place-remove:hover { color: var(--ink); }
+  .place-field input { width: 100%; background: var(--canvas); border: 1px solid var(--hairline); border-radius: 8px; color: var(--ink);
+    font: 400 13px var(--sans); padding: 8px 12px 8px 32px; outline: none; text-transform: uppercase; }
+  .place-field input::placeholder { text-transform: none; color: var(--ink-subtle); }
+  .place-field input:focus { border-color: var(--hairline-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-focus) 50%, transparent); }
+  .place-field[hidden] { display: none; }
+  /* Short screens: the lede is the first thing to go */
+  @media (min-width: 641px) and (max-height: 880px) { .lede { display: none; } .brand { margin-bottom: 20px; } }
+
+  /* More filters disclosure */
+  .more-filters { margin-top: 14px; scroll-margin-bottom: 120px; }
+  .more-filters summary { list-style: none; cursor: pointer; color: var(--ink-subtle); font: 500 13px var(--sans); display: flex; align-items: center; gap: 6px; }
+  .more-filters summary::-webkit-details-marker { display: none; }
+  .more-filters summary::before { content: ''; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin-right: 2px; }
+  .more-filters[open] summary::before { transform: rotate(45deg); }
+  .more-filters summary:hover { color: var(--ink); }
+  .more-filters summary span { color: var(--ink); font-weight: 600; }
+  .more-filters .filter { margin-top: 14px; }
+
+  /* Profile sections that open on demand */
+  details.section { border-top: 1px solid var(--hairline); padding: 12px 0 0; margin-top: 4px; }
+  details.section + details.section { margin-top: 12px; }
+  details.section summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 6px;
+    color: var(--ink-subtle); font: 500 13px var(--sans); padding-bottom: 10px; }
+  details.section summary::-webkit-details-marker { display: none; }
+  details.section summary { white-space: nowrap; }
+  details.section summary span { margin-left: auto; padding-left: 6px; color: var(--ink-subtle); font-weight: 400; font-size: 12px; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  details.section summary::before { content: ''; flex: none; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 4px 2px 0; }
+  details.section[open] summary::before { transform: rotate(45deg); }
+  details.section summary:hover { color: var(--ink); }
+  details.section[open] summary span { display: none; }
+  .split { display: flex; height: 6px; gap: 2px; margin: 4px 0 6px; }
+  .split i { border-radius: 1px; background: var(--ink-subtle); }
+  .split i:nth-child(2) { background: #6b6f77; } .split i:nth-child(3) { background: #4c4f56; } .split i:nth-child(4) { background: var(--hairline-strong); }
+  .split-key { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--ink-subtle); font-variant-numeric: tabular-nums; }
+  .split-key b { color: var(--ink); font-weight: 500; }
+
+  .layer-link {
+    background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer;
+    text-decoration: underline dotted; text-decoration-color: var(--hairline); text-underline-offset: 3px;
+    transition: color .15s, text-decoration-color .15s;
+  }
+  .layer-link:hover { color: var(--ink-muted); text-decoration-color: var(--ink-subtle); }
+  .layer-link[aria-pressed="true"] { color: var(--ink); text-decoration-style: solid; text-decoration-color: var(--primary); }
+  .legend-ends { display: flex; justify-content: space-between; color: var(--ink-subtle); font-size: 12px; }
+  /* Inner break values under the four joins between the five steps; replaces the end labels on numeric layers */
+  .legend-ticks { position: relative; height: 16px; color: var(--ink-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .legend-ticks span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+  .legend-ticks span.end { right: 0; transform: none; }
+  .legend-ticks[hidden], .legend-ends[hidden] { display: none; }
+
+  .count { margin: 0 -24px; padding: 16px 24px; border-top: 1px solid var(--hairline); color: var(--ink-subtle); font-size: 13px;
+    position: sticky; bottom: 0; background: var(--surface-1); }
+  .count b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .profile { left: auto; right: 16px; bottom: auto; width: 360px; max-height: calc(100% - 32px); }
+  .profile[hidden], select[hidden] { display: none; }
+  #detail { padding: 20px 24px; }
+  #detail h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.4px; margin: 0; line-height: 1.25; padding-right: 32px; }
+  .maplibregl-ctrl-bottom-right { transition: right .2s cubic-bezier(.16,1,.3,1); }
+  body.profile-open .maplibregl-ctrl-bottom-right { right: 376px; }
+  .close {
+    position: absolute; top: 18px; right: 16px; width: 32px; height: 32px; display: grid; place-items: center;
+    background: none; border: 0; border-radius: 8px; color: var(--ink-subtle); cursor: pointer;
+  }
+  .close:hover { background: var(--surface-3); color: var(--ink); }
+  #detail .where { color: var(--ink-subtle); font-size: 12px; margin: 4px 0 16px; }
+  .stat .k { color: var(--ink-subtle); font-size: 12px; }
+  .stat .v { font-size: 28px; font-weight: 600; letter-spacing: -0.6px; line-height: 1.2; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .stat .v small { color: var(--ink-subtle); font-size: 14px; font-weight: 500; letter-spacing: 0; }
+  .stat .n { color: var(--ink-subtle); font-size: 12px; line-height: 1.35; }
+  .domains { display: grid; gap: 4px; }
+  .dom { display: grid; grid-template-columns: 136px 1fr; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-subtle); }
+  .bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 6px; }
+  .bar i { background: var(--hairline); border-radius: 1px; }
+  .bar i.on { background: var(--ink-subtle); }
+  .dom.axis { font-size: 11px; margin-top: 2px; }
+  .dom.axis > span:last-child { display: flex; justify-content: space-between; }
+
+
+  .maplibregl-ctrl-group { background: var(--surface-1) !important; border: 1px solid var(--hairline); border-radius: 8px !important; box-shadow: none !important; }
+  .maplibregl-ctrl-group button + button { border-top: 1px solid var(--hairline) !important; }
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(1) brightness(.85); }
+  .maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--canvas) 70%, transparent) !important; color: var(--ink-subtle); font-size: 12px; }
+  .maplibregl-ctrl-attrib a { color: var(--ink-subtle) !important; }
+  .maplibregl-ctrl-attrib-button { filter: invert(1); }
+
+  @media (max-width: 640px) {
+    /* On the sheet the layer note keeps to one line so travel time and the filters stay in view; More opens the rest */
+    .about:not(.open) { display: flex; align-items: baseline; gap: 8px; margin-top: 10px; }
+    .about:not(.open) .layer-about { flex: 1; min-width: 0; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .colour .about-more:not([hidden]) { display: inline-block; }
+    aside { height: 50vh; }
+    .lede { display: none; }
+    .brand { margin-bottom: 16px; }
+    .scroll { display: flex; flex-direction: column; }
+    .count { position: sticky; bottom: 0; background: var(--surface-1); margin: 0 -20px; padding: 12px 20px; }
+    .count .mini-legend { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin-top: 8px; color: var(--ink-subtle); font-size: 12px; }
+    .count .mini-legend .legend { margin: 0; height: 4px; }
+    /* One legend on mobile: the mini legend in the count band */
+    .colour .legend, .colour .legend-ends, .colour .legend-ticks, .count .hint.first { display: none; }
+    aside { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; }
+    .profile { z-index: 3; top: auto; bottom: 8px; left: 8px; right: 8px; width: auto; height: 50vh; max-height: none; }
+    .profile.in { animation-name: lift; }
+    @keyframes lift { from { opacity: 0; transform: translateY(12px); } }
+    #detail { padding: 20px; }
+    .scroll { padding: 20px 20px 8px; }
+    .search input, select { font-size: 16px; min-height: 44px; }
+  }
+
+  :root { color-scheme: dark; }
+  ::selection { background: color-mix(in srgb, var(--primary) 45%, transparent); color: var(--ink); }
+  input { caret-color: var(--primary-hover); }
+
+  .field { position: relative; }
+  .field svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-tertiary); pointer-events: none; }
+  .search input { padding-left: 34px; }
+  .search input[aria-busy="true"] { color: var(--ink-subtle); }
+  .status { margin: 8px 0 0; color: var(--ink-subtle); font-size: 12px; }
+  .status:empty { display: none; }
+  .status.err { color: var(--ink-muted); }
+  .search { margin-bottom: 16px; }
+
+  .count p { margin: 0; }
+  .mini-legend { display: none; }
+  .count .hint { display: block; color: var(--ink-subtle); font-size: 12px; margin-top: 4px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 16px; }
+  .stat { padding: 0 16px 0 0; }
+  .stat + .stat { padding: 0 0 0 16px; border-left: 1px solid var(--hairline); }
+  .outside { display: block; margin-top: 6px; color: var(--ink-muted); }
+  .homes { display: grid; gap: 6px; margin-bottom: 16px; }
+  .homes .row { display: grid; grid-template-columns: 56px 1fr; gap: 12px; align-items: baseline; font-size: 13px; }
+  .homes .row > span { color: var(--ink-subtle); }
+  .homes .links { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .homes a { color: var(--ink-muted); text-decoration: underline; text-decoration-color: var(--hairline-strong); text-underline-offset: 3px; border-radius: 4px; transition: color .15s, text-decoration-color .15s; }
+  .homes a:hover { color: var(--ink); text-decoration-color: var(--ink-subtle); }
+  .fine { color: var(--ink-subtle); font-size: 12px; margin: 0 0 16px; }
+  .sublabel { display: flex; justify-content: space-between; color: var(--ink-subtle); font-size: 13px; font-weight: 500; margin: 0 0 10px; }
+  .sublabel span { color: var(--ink-subtle); font-weight: 400; font-size: 12px; }
+
+  .profile.in { animation: enter .2s cubic-bezier(.16,1,.3,1); }
+  #detail.in { animation: rise .18s cubic-bezier(.16,1,.3,1); }
+  @keyframes enter { from { opacity: 0; transform: translateX(8px); } }
+  @keyframes rise { from { opacity: .4; } }
+  @media (prefers-reduced-motion: reduce) { .profile.in, #detail.in { animation: none; } }
+
+
+  .maplibregl-ctrl-attrib, .maplibregl-ctrl-attrib-inner, .maplibregl-ctrl-attrib-inner * { color: var(--ink-subtle) !important; font-size: 12px; }
+  .maplibregl-ctrl-attrib.maplibregl-compact { background: var(--surface-1) !important; border: 1px solid var(--hairline); }
+
+  /* Guide: a drawn question mark beside the wordmark opens a tour of every feature on the real controls */
+  .help { flex: none; width: 24px; height: 24px; margin-left: -4px; display: grid; place-items: center; background: none; border: 0; padding: 0;
+    border-radius: 6px; color: var(--ink-tertiary); cursor: pointer; transition: color .15s; }
+  .help:hover, .help[aria-expanded="true"] { color: var(--ink); }
+  /* The lit control keeps working: the hole takes no clicks and its shadow is the dimming */
+  .tour-hole { position: fixed; z-index: 10; border-radius: 8px; pointer-events: none;
+    box-shadow: 0 0 0 1px var(--hairline-strong), 0 0 0 200vmax rgba(1,1,2,.64);
+    transition: top .45s cubic-bezier(.16,1,.3,1), left .45s cubic-bezier(.16,1,.3,1), width .45s cubic-bezier(.16,1,.3,1), height .45s cubic-bezier(.16,1,.3,1); }
+  .tour-card { position: fixed; z-index: 11; width: 300px; padding: 18px 20px 16px; background: var(--surface-1); border: 1px solid var(--hairline-strong);
+    border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); outline: none;
+    transition: top .45s cubic-bezier(.16,1,.3,1), left .45s cubic-bezier(.16,1,.3,1); animation: rise .2s cubic-bezier(.16,1,.3,1); }
+  .tour-hole[hidden], .tour-card[hidden] { display: none; }
+  .tour-hole.idle { opacity: 0; }
+  /* On a phone the profile sheet covers the controls sheet; the controls steps set it aside without closing it */
+  @media (max-width: 640px) { body.tour-controls .profile { visibility: hidden; } }
+  .tour-top { display: flex; align-items: center; gap: 10px; color: var(--ink-subtle); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tour-marks { display: flex; gap: 2px; }
+  .tour-marks i { width: 5px; height: 5px; border-radius: 1px; background: var(--hairline-strong); transition: background .2s; }
+  .tour-marks i.done { background: var(--ink-tertiary); }
+  .tour-marks i.now { background: var(--primary); }
+  .tour-card h2 { margin: 12px 0 6px; font-size: 16px; font-weight: 600; letter-spacing: -0.2px; line-height: 1.3; text-wrap: balance; }
+  .tour-card p { margin: 0; color: var(--ink-muted); font-size: 13px; line-height: 1.5; text-wrap: pretty; }
+  .tour-nav { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+  .tour-skip { margin-right: auto; background: none; border: 0; padding: 4px 0; font: 500 12px var(--sans); color: var(--ink-subtle); cursor: pointer; border-radius: 4px; }
+  .tour-skip:hover { color: var(--ink); }
+  .tour-nav .pill[hidden], .tour-skip[hidden] { visibility: hidden; display: inline-flex; }
+  .tour-next { background: var(--primary); border-color: transparent; color: #fff; }
+  .tour-next:hover { background: #4f5bc4; border-color: transparent; }
+  @media (max-width: 640px) {
+    .tour-card { left: 8px !important; right: 8px; top: 8px !important; width: auto !important; }
+    .help { width: 44px; height: 44px; margin: -10px -10px -10px -14px; }
+    .tour-nav .pill, .tour-skip { min-height: 44px; }
+    .tour-nav .pill { padding: 5px 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tour-hole, .tour-card { transition: none; animation: none; } }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<aside class="controls" aria-label="Whereabouts controls">
+  <div class="scroll">
+    <div class="brand">
+      <h1><button type="button" class="home" data-action="home" title="Clear all filters and show all of England">
+      <svg class="logo" width="15" height="15" viewBox="0 0 14 14" aria-hidden="true">
+        <mask id="logo-cut" maskUnits="userSpaceOnUse" x="0" y="0" width="14" height="14"><rect width="14" height="14" fill="#fff"/>
+          <path d="M4 0 4.5 3.5 10.5 4.5 10 10.5 3.5 9.5 4.5 3.5M10.5 4.5 14 3.5M10 10.5 11 14M3.5 9.5 0 10.5" fill="none" stroke="#000" stroke-width="1.3" stroke-linejoin="round"/></mask>
+        <g mask="url(#logo-cut)"><path d="M0 0h14v14H0z" fill="#34343a"/><path class="lit" d="M4.5 3.5 10.5 4.5 10 10.5 3.5 9.5z" fill="#5e6ad2"/></g>
+      </svg>Whereabouts</button></h1>
+      <button type="button" class="help" data-action="tour" aria-label="How to use this map" title="How to use this map" aria-expanded="false" aria-controls="tour-card">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6.35"/><path d="M6.3 6.25a1.75 1.75 0 1 1 2.45 1.6c-.45.2-.75.6-.75 1.1v.35" stroke-linecap="round"/><circle cx="8" cy="11.2" r=".2" stroke-width="1.2"/></svg>
+      </button>
+      <button type="button" class="pill quiet shortlist-btn" id="shortlist-btn" data-action="shortlist" hidden><svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3.5 1.75h7v10.5L7 9.6l-3.5 2.65z" stroke-linejoin="round"/></svg>Shortlist <b id="shortlist-n">0</b></button>
+    </div>
+    <p class="lede">Every neighbourhood in England, filtered by what matters to you.</p>
+
+    <form class="search" id="search" role="search">
+      <div class="field">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="7" cy="7" r="5"/><path d="m11 11 3.5 3.5" stroke-linecap="round"/></svg>
+        <input id="postcode" placeholder="Go to a postcode" autocomplete="postal-code" autocapitalize="characters"
+               spellcheck="false" enterkeyhint="search" aria-label="Postcode" aria-describedby="search-status">
+      </div>
+      <p class="status" id="search-status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="colour">
+      <label class="label" for="colour">Colour by</label>
+      <select id="colour">
+        <optgroup label="Deprivation 2025">
+          <option value="imd_decile">Overall deprivation</option>
+          <option value="d_income">Income</option>
+          <option value="d_employment">Employment</option>
+          <option value="d_education">Education and skills</option>
+          <option value="d_health">Health and disability</option>
+          <option value="d_crime">Crime (deprivation domain)</option>
+          <option value="d_housing">Barriers to housing and services</option>
+          <option value="d_environment">Living environment</option>
+        </optgroup>
+        <optgroup label="Homes">
+          <option value="price">Median house price</option>
+        </optgroup>
+        <optgroup label="Travel" id="travel-group" hidden></optgroup>
+        <optgroup label="People">
+          <option value="pct_families">Households with children</option>
+          <option value="pct_students">Students</option>
+          <option value="median_age">Median age</option>
+        </optgroup>
+        <optgroup label="Environment">
+          <option value="flood_rs_pct">Flood risk: rivers and sea</option>
+          <option value="flood_sw_pct">Flood risk: surface water</option>
+          <option value="noise_road_pct">Road noise</option>
+          <option value="no2_ugm3">Air quality (NO₂)</option>
+          <option value="radon_class">Radon</option>
+        </optgroup>
+        <optgroup label="Around here">
+          <option value="pt_m">Distance to public transport</option>
+          <option value="crime">Recorded crime</option>
+          <option value="schools">Positively rated primary schools</option>
+          <option value="broadband">Gigabit broadband</option>
+        </optgroup>
+      </select>
+      <div class="legend" id="legend" aria-hidden="true"></div>
+      <div class="legend-ticks" id="legend-ticks" hidden></div>
+      <div class="legend-ends" id="legend-ends"><span id="lo"></span><span id="hi"></span></div>
+      <p class="legend-note" id="legend-note" hidden><i></i>No police.uk data for Greater Manchester</p>
+      <div class="about" id="about">
+        <p class="layer-about" id="layer-about"></p>
+        <button type="button" class="list-btn about-more" id="about-more" aria-expanded="false" aria-controls="layer-about" hidden>More</button>
+      </div>
+    </section>
+
+    <section class="filters">
+      <div class="travel">
+        <p class="label">Travel time <span class="mode" id="tt-mode">by public transport</span></p>
+        <div id="places"></div>
+        <form id="place-form" class="field place-field" autocomplete="off">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M8 3v10M3 8h10" stroke-linecap="round"/></svg>
+          <input id="place" placeholder="Add a place, e.g. work postcode" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="Add a place by postcode" aria-describedby="place-status">
+        </form>
+        <p class="status" id="place-status" role="status" aria-live="polite"></p>
+      </div>
+      <div class="filter">
+        <label class="label" for="budget">Median price up to <b id="budget-out">any</b></label>
+        <input type="range" id="budget" min="0" max="15" step="1" value="15">
+      </div>
+      <div class="filter">
+        <label class="label" for="floor"><span id="floor-name">Overall deprivation</span> <b id="floor-out">any</b></label>
+        <input type="range" id="floor" min="0" max="4" step="1" value="0">
+      </div>
+      <div class="filter">
+        <label class="label" for="crime">Recorded crime <b id="crime-out">any</b></label>
+        <input type="range" id="crime" min="0" max="4" step="1" value="0">
+      </div>
+      <div class="filter">
+        <label class="label" for="schools">Positively rated primaries, 2 km <b id="schools-out">any</b></label>
+        <input type="range" id="schools" min="0" max="10" step="1" value="0">
+      </div>
+      <div class="filter">
+        <label class="label" for="gigabit">Gigabit broadband <b id="gigabit-out">any</b></label>
+        <input type="range" id="gigabit" min="0" max="6" step="1" value="0">
+      </div>
+      <details class="more-filters" id="more-filters">
+        <summary>More filters <span id="more-count"></span></summary>
+        <div class="filter">
+          <label class="label" for="pt">Public transport within <b id="pt-out">any</b></label>
+          <input type="range" id="pt" min="0" max="4" step="1" value="0">
+        </div>
+        <div class="filter">
+          <label class="label" for="shop">Supermarket within <b id="shop-out">any</b></label>
+          <input type="range" id="shop" min="0" max="4" step="1" value="0">
+        </div>
+        <div class="filter">
+          <label class="label" for="flood">River or sea flood risk <b id="flood-out">any</b></label>
+          <input type="range" id="flood" min="0" max="4" step="1" value="0">
+        </div>
+        <div class="filter">
+          <label class="label" for="noise">Road noise <b id="noise-out">any</b></label>
+          <input type="range" id="noise" min="0" max="4" step="1" value="0">
+        </div>
+        <div class="filter">
+          <label class="label" for="families">Households with children <b id="families-out">any</b></label>
+          <input type="range" id="families" min="0" max="5" step="1" value="0">
+        </div>
+        <div class="filter">
+          <label class="label" for="students">Students <b id="students-out">any</b></label>
+          <input type="range" id="students" min="0" max="4" step="1" value="0">
+        </div>
+      </details>
+    </section>
+
+    <div class="count">
+      <p id="count" aria-live="polite">Loading neighbourhoods…</p>
+      <div class="mini-legend" aria-hidden="true"><span id="mini-lo"></span><div class="legend" id="mini-ramp"></div><span id="mini-hi"></span></div>
+    </div>
+  </div>
+
+
+</aside>
+
+<aside class="profile" id="profile" aria-label="Neighbourhood profile" hidden>
+  <button type="button" class="close" id="close" aria-label="Close profile">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m2 2 8 8M10 2l-8 8" stroke-linecap="round"/></svg>
+  </button>
+  <div id="detail"></div>
+</aside>
+
+<div class="tour-hole" id="tour-hole" hidden></div>
+<div class="tour-card" id="tour-card" role="dialog" aria-label="How to use this map" tabindex="-1" hidden>
+  <div class="tour-top"><span class="tour-marks" id="tour-marks" aria-hidden="true"></span><span id="tour-step"></span></div>
+  <div aria-live="polite"><h2 id="tour-title"></h2><p id="tour-body"></p></div>
+  <div class="tour-nav">
+    <button type="button" class="tour-skip" id="tour-skip">Skip guide</button>
+    <button type="button" class="pill quiet" id="tour-back">Back</button>
+    <button type="button" class="pill tour-next" id="tour-next">Next</button>
+  </div>
+</div>
+
+<script>
+// One five-step lavender ramp for every layer, price included; brighter = more
+const RAMP = ['#444aa9','#646fc2','#8692d9','#abb6f1','#d2dbff'];
+const DIMMED = '#0b0c0f';
+const BUDGETS = [100e3,125e3,150e3,175e3,200e3,250e3,300e3,350e3,400e3,500e3,600e3,750e3,1e6,1.5e6,2e6,Infinity];
+const DOMAINS = [
+  ['d_income','Income'], ['d_employment','Employment'], ['d_education','Education'],
+  ['d_health','Health'], ['d_crime','Crime'], ['d_housing','Housing and services'], ['d_environment','Environment'],
+];
+const $ = id => document.getElementById(id);
+
+const NODATA = '#16171b';
+const GIGABIT = [0, 50, 70, 80, 90, 95, 100];
+const DEP_NAMES = {
+  imd_decile: 'Overall', d_income: 'Income', d_employment: 'Employment', d_education: 'Education and skills',
+  d_health: 'Health and disability', d_crime: 'Crime', d_housing: 'Housing and services', d_environment: 'Living environment',
+};
+
+const state = {
+  colour: 'imd_decile', depMeasure: 'imd_decile',
+  budget: Infinity, floor: 1, crimeFloor: 1, schoolsMin: 0, gigabitMin: 0,
+  selected: null, hovered: null,
+};
+let meta, attrs;
+// Start the data fetch now so it overlaps with the basemap download
+const dataReady = Promise.all([
+  fetch('data/meta.json').then(r => r.json()),
+  fetch('data/attrs.json').then(r => r.json()),
+]).then(([m, a]) => { meta = m; attrs = a; });
+
+const month = ym => new Date(ym + '-01').toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+const gbp = v => v >= 1e6 ? `£${(v/1e6).toFixed(v % 1e6 ? 2 : 0)}m` : `£${Math.round(v/1e3)}k`;
+const num = v => v.toLocaleString('en-GB');
+const dist = m => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1).replace(/\.0$/, '')} km`;
+const measureName = () => DEP_NAMES[state.depMeasure];
+const step = (field, breaks) => ['step', ['coalesce', ['get', field], -1], NODATA, 0, RAMP[0], ...breaks.flatMap((b, i) => [b, RAMP[i + 1]])];
+// Schools within 2 km: none, 1–2, 3–5, 6–9, 10+; gigabit: under 60%, 60–84, 85–96, 97–99, all premises
+const SCHOOL_BREAKS = [1, 3, 6, 10], GIGABIT_BREAKS = [60, 85, 97, 100];
+// Price: fixed breaks on budget-slider values, so a budget rules out whole steps and London spreads over three steps.
+// Each step includes its upper value (£300,000 is in "up to £300k"), matching the price <= budget filter.
+const PRICE_BREAKS = [200e3, 300e3, 500e3, 750e3];
+const priceStep = v => PRICE_BREAKS.filter(b => v > b).length;
+// Quintile breaks (20/40/60/80%) from the nine decile breaks the build publishes
+const q5 = b => [b[1], b[3], b[5], b[7]];
+// "Highest 30% in England" / "Lowest 20% in England" from a 1–10 decile where 1 is the highest crime rate
+const crimeBand = d => d <= 5 ? `Highest ${d * 10}% in England` : `Lowest ${(11 - d) * 10}% in England`;
+// The same for deprivation, where 1 is most deprived: "Most deprived 20% in England"
+const depBand = d => d <= 5 ? `Most deprived ${d * 10}% in England` : `Least deprived ${(11 - d) * 10}% in England`;
+// A level word that reads the right way round on its own: decile 1–2 "Very high" through 9–10 "Very low"
+const depLevel = d => ['Very high', 'High', 'Average', 'Low', 'Very low'][Math.floor((d - 1) / 2)];
+const depShort = d => depBand(d).replace(' in England', '').toLowerCase();
+// The crime filter reads in bands like its legend and moves in the same 20% steps as the deprivation levels:
+// a floor of 5 keeps the lowest 60%
+const keepPct = f => (11 - f) * 10;
+// The deprivation filter is a ceiling in the profile's level words, like the price slider:
+// each step keeps a level and everything less deprived (floor = lowest decile kept)
+const DEP_FLOORS = [1, 3, 5, 7, 9], DEP_LIMITS = ['any', 'up to high', 'up to average', 'up to low', 'very low'];
+const depLimit = () => DEP_LIMITS[DEP_FLOORS.indexOf(state.floor)];
+
+// Each colour layer: its ramp, paint expression and legend ends (full and mobile).
+// Every layer reads brighter = more of what it is named after, legend dark on the left.
+// Deciles where 1 is the most (deprivation, crime) pair up into the five levels (1–2 Very high … 9–10 Very low)
+// and take the ramp reversed, so step i holds deciles 9 - 2i and 10 - 2i.
+const levelStep = d => 4 - Math.floor((d - 1) / 2);
+const decileExpr = f => ['match', ['coalesce', ['get', f], 0], ...[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].flatMap(d => [d, RAMP[levelStep(d)]]), NODATA];
+const LAYERS = {
+  dep: { ramp: RAMP, expr: decileExpr,
+         ends: () => ['Least deprived 20%', 'Most deprived 20%'], mini: () => ['Least', 'Most deprived'] },
+  price: { ramp: RAMP, expr: () => step('price', PRICE_BREAKS.map(b => b + 1e-6)), ticks: () => PRICE_BREAKS.map(gbp),
+           ends: () => ['under £200k', 'over £750k'], mini: () => ['£200k', '£750k'] },
+  crime: { ramp: RAMP, expr: () => decileExpr('crime_decile'),
+           ends: () => ['Lowest 20% for crime', 'Highest 20%'], mini: () => ['Lowest', 'Highest crime'] },
+  schools: { ramp: RAMP, expr: () => step('prim_ok', SCHOOL_BREAKS),
+             ends: () => ['None within 2 km', '10 or more'], mini: () => ['None', '10+'] },
+  broadband: { ramp: RAMP, expr: () => step('gigabit', GIGABIT_BREAKS), ticks: () => ['60%', '85%', '97%', 'all'],
+               ends: () => ['Under 60% of premises', 'All premises'], mini: () => ['Under 60%', '100%'] },
+};
+const layer = () => LAYERS[state.colour] ?? LAYERS.dep;
+// What each layer measures, shown under the legend so terms make sense without a hover (phones have none)
+const ABOUT = {
+  imd_decile: 'The official Index of Multiple Deprivation 2025 ranks all 33,755\u00a0small areas in England on income, employment, education, health, crime, access to housing and services, and living environment. It describes the area as a whole, not any one household.',
+  d_income: 'Share of people on low incomes, counted through means-tested benefits and tax credits.',
+  d_employment: 'Share of working-age people out of work through unemployment, sickness, disability or caring.',
+  d_education: 'Lack of attainment and skills, from children’s exam results to adults’ qualifications and English.',
+  d_health: 'Risk of early death and of a poorer quality of life through illness and disability.',
+  d_crime: 'Risk of violence, burglary, theft and criminal damage, from two years of police records. Separate from the Recorded crime layer.',
+  d_housing: 'How hard it is to reach a GP, school, supermarket and post office, plus overcrowding, homelessness and housing affordability.',
+  d_environment: 'Housing in poor condition or without central heating, air quality and road traffic accidents.',
+  price: 'Median price of homes sold over the latest 24 months, from HM Land Registry. An area with fewer than 5\u00a0sales takes its wider neighbourhood’s median.',
+  crime: 'Crimes recorded by police.uk over the latest 12 months, per 1,000 residents: violence and sexual offences, burglary, robbery, vehicle crime, criminal damage and arson, theft from the person and bicycle theft. Shoplifting, anti-social behaviour, drugs and public order are not counted. Town centres and stations run high because visitors are not residents.',
+  schools: 'State primary schools within 2\u00a0km rated Good or better by Ofsted, or expected standard or above in every area on a newer report card. Distance is not a catchment.',
+  broadband: 'Share of premises that can get gigabit broadband (1,000\u00a0Mbit/s), from Ofcom.',
+  travel: 'Door to door by public transport and walking, leaving 8 to 9am on a weekday: the typical time across that hour, waiting included.',
+  pct_families: 'Share of households with dependent children, from Census 2021.',
+  pct_students: 'Share of adults who are full-time students, from Census 2021.',
+  median_age: 'The middle age of all residents, from Census 2021: half are younger, half older.',
+  flood_rs_pct: 'Share of homes at high or medium risk of flooding from rivers or the sea, allowing for defences: at least a 1% chance in any year. Environment Agency.',
+  flood_sw_pct: 'Share of postcodes at high or medium risk of surface water flooding, when heavy rain cannot drain away: at least a 1% chance in any year. Environment Agency.',
+  noise_road_pct: 'Share of postcodes where road traffic reaches 55\u00a0dB or more as a day, evening and night level, with evening and night counted louder (Defra, 2021). The World Health Organization recommends under 53\u00a0dB.',
+  no2_ugm3: 'Nitrogen dioxide, mostly from road traffic, in micrograms per cubic metre of air (Defra 2024 background levels). The World Health Organization guideline is 10.',
+  radon_class: 'Radon is a natural radioactive gas from the ground that can build up indoors. Shaded by the share of homes estimated above the action level (200\u00a0Bq/m³), where the UK Health Security Agency advises reducing it. A home test shows a particular home’s level.',
+  pt_m: 'Straight-line distance to the nearest stop with at least one bus, tram, metro or train an hour, 7am to 7pm on a weekday.',
+};
+
+// ---- Travel time: one destination row of the precomputed matrix per place (destination-major uint8, 255 = over 2 hours).
+// Rows are stored deflated in <name>_rows.bin; <name>_index.bin holds n + 1 uint32 byte offsets into it.
+state.places = [];
+let TT;
+const TT_BANDS = [15, 30, 45, 60, 120];   // ramp step i covers minutes up to TT_BANDS[i]; brighter = longer
+const ttStep = m => { const k = m === 255 ? -1 : TT_BANDS.findIndex(b => m <= b); return k < 0 ? null : k; };
+async function travelMeta() {
+  if (TT === undefined) TT = await fetch('data/tt_meta.json').then(r => r.ok ? r.json() : null).catch(() => null);
+  return TT;
+}
+// Each matrix's index is fetched once; a failed fetch is forgotten so the next lookup retries
+const ttIndex = {};
+const travelIndex = name => ttIndex[name] ??= fetch(`data/${name}_index.bin`)
+  .then(r => r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.status)))
+  .then(b => new Uint32Array(b))
+  .catch(err => { delete ttIndex[name]; throw err; });
+async function travelRow(fid, file = 'tt_pt.bin') {
+  const meta = await travelMeta();
+  if (!meta) throw new Error('Travel times aren’t available yet.');
+  const name = file.replace(/\.bin$/, '');
+  try {
+    const idx = await travelIndex(name);
+    const start = idx[fid - 1], end = idx[fid] - 1;
+    const r = await fetch(`data/${name}_rows.bin`, { headers: { Range: `bytes=${start}-${end}` } });
+    const packed = await r.blob();
+    if (packed.size !== end - start + 1) throw new Error();
+    const row = new Uint8Array(await new Response(packed.stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+    if (row.length !== meta.n) throw new Error();
+    return row;
+  } catch {
+    throw new Error('Travel times didn’t load. Try again.');
+  }
+}
+// How a journey is made. Walking is estimated from straight-line distance (x1.3 for streets, 4.8 km/h);
+// a train counts when the time with trains beats the bus-only time by 3 minutes or more.
+const WALK_FACTOR = 1.3, WALK_KMH = 4.8;
+function walkMinutes(pl, i) {
+  const k = Math.cos(pl.lat * Math.PI / 180);
+  const km = Math.hypot((attrs.lon[i] - pl.lon) * 111.32 * k, (attrs.lat[i] - pl.lat) * 110.57);
+  return Math.round(km * WALK_FACTOR / WALK_KMH * 60);
+}
+function journey(pl, i) {
+  const pt = pl.row[i], bus = pl.busRow ? pl.busRow[i] : pt, walk = walkMinutes(pl, i);
+  const mode = walk <= pt ? 'walk' : pt === 255 ? null : bus - pt >= 3 ? 'train' : 'bus';
+  return { pt, bus, walk, mode };
+}
+// 'bus' covers everything in the bus timetable feed: buses, trams, metro (Tyne and Wear, Metrolink, West Midlands), the Underground and DLR
+const MODE_LABEL = { walk: 'on foot', bus: 'by bus, tram or metro', train: 'includes a train' };
+const MODE_SHORT = { walk: 'on foot', bus: '', train: 'incl. train' };
+// One journey as text: short for list rows and the compare table, full for the profile
+function journeyText(j, short) {
+  if (j.pt === 0) return 'In this area';
+  if (j.mode === 'walk') return `${short ? j.walk + ' min' : fmtMin(j.walk)} on foot`;
+  if (j.pt === 255) return short ? '2h+' : 'Over 2 hours';
+  return short ? `${j.pt} min${MODE_SHORT[j.mode] ? ' ' + MODE_SHORT[j.mode] : ''}` : `${fmtMin(j.pt)}, ${MODE_LABEL[j.mode]}`;
+}
+const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}` : `${m} min`;
+
+// The area a destination falls in: nearest population-weighted centroid
+function nearestArea(lon, lat) {
+  const k = Math.cos(lat * Math.PI / 180);
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < attrs.lon.length; i++) {
+    const d = ((attrs.lon[i] - lon) * k) ** 2 + (attrs.lat[i] - lat) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best + 1;
+}
+// A map expression that is true for the areas whose index passes test(i): matches on feature ids,
+// listing whichever side is shorter
+function idSetExpr(test) {
+  const pass = [], fail = [];
+  for (let i = 0; i < attrs.price.length; i++) (test(i) ? pass : fail).push(i + 1);
+  if (!pass.length) return false;
+  if (!fail.length) return true;
+  return pass.length <= fail.length ? ['match', ['id'], pass, true, false] : ['match', ['id'], fail, false, true];
+}
+// Census and amenity layers: five national quintile steps from meta.breaks; brighter = more (or farther)
+const qLayer = (field, ends, mini, tick) => ({
+  ramp: RAMP, expr: () => step(field, q5(meta.breaks[field])), ticks: () => q5(meta.breaks[field]).map(tick),
+  ends: () => ends(q5(meta.breaks[field])), mini: () => mini(q5(meta.breaks[field])),
+});
+Object.assign(LAYERS, {
+  pct_families: qLayer('pct_families', b => [`Under ${b[0]}% of households`, `Over ${b[3]}%`], b => [`${b[0]}%`, `${b[3]}%+`], v => `${Math.round(v)}%`),
+  pct_students: qLayer('pct_students', b => [`Under ${b[0]}% of adults`, `Over ${b[3]}%`], b => [`${b[0]}%`, `${b[3]}%+`], v => `${Math.round(v)}%`),
+  median_age: qLayer('median_age', b => [`Under ${b[0]}`, `Over ${b[3]}`], b => [`${b[0]}`, `${b[3]}+`], v => `${Math.round(v)}`),
+  pt_m: qLayer('pt_m', b => [`Under ${dist(b[0])}`, `Over ${dist(b[3])}`], b => [dist(b[0]), `${dist(b[3])}+`], dist),
+});
+// Fixed-break environment layers: brighter = higher exposure
+const fLayer = (field, breaks, ends, mini, ticks) => ({ ramp: RAMP, breaks, ticks: ticks && (() => ticks),
+  expr: () => step(field, breaks), ends: () => ends, mini: () => mini });
+const RADON_BANDS = ['under 1%', '1–3%', '3–5%', '5–10%', '10–30%', '30% or more'];
+// Six official radon bands on five steps: 3–5% and 5–10% share the middle step, so the 1%, 3%, 10% and 30%
+// edges (affected area; BRE BR211 basic and full protection for new homes) all stay visible
+const RADON_STEP = [null, 0, 1, 2, 2, 3, 4];
+Object.assign(LAYERS, {
+  flood_rs_pct: fLayer('flood_rs_pct', [0.1, 2, 10, 30], ['No homes at risk', '30%+ of homes'], ['None', '30%+']),
+  flood_sw_pct: fLayer('flood_sw_pct', [2, 6, 15, 30], ['Under 2% of postcodes', '30%+'], ['<2%', '30%+'], ['2%', '6%', '15%', '30%']),
+  noise_road_pct: fLayer('noise_road_pct', [10, 20, 40, 65], ['Under 10% of postcodes', '65%+'], ['<10%', '65%+'], ['10%', '20%', '40%', '65%']),
+  no2_ugm3: { ramp: RAMP, expr: () => step('no2_ugm3', q5(meta.breaks.no2_ugm3)), ticks: () => q5(meta.breaks.no2_ugm3).map(v => `${v}`),
+    ends: () => [`Under ${q5(meta.breaks.no2_ugm3)[0]} µg/m³`, `Over ${q5(meta.breaks.no2_ugm3)[3]}`], mini: () => ['Lower', 'Higher'] },
+  radon_class: { ramp: RAMP,
+    expr: () => ['match', ['coalesce', ['get', 'radon_class'], 0], ...[1, 2, 3, 4, 5, 6].flatMap(c => [c, RAMP[RADON_STEP[c]]]), NODATA],
+    ends: () => ['Under 1% of homes above action level', '30%+'], mini: () => ['<1%', '30%+'] },
+});
+const FLOOD = [Infinity, 20, 10, 5, 1], NOISE = [Infinity, 50, 30, 20, 10];
+Object.assign(state, { floodMax: Infinity, noiseMax: Infinity });
+const fLower = (f, i) => i === 0 ? 0 : LAYERS[f].breaks[i - 1];
+const qClass = f => p => stepOf(p[f], q5(meta.breaks[f]));
+const qLower = (f, i) => i === 0 ? 0 : q5(meta.breaks[f])[i - 1];
+const qUpper = (f, i) => i < 4 ? q5(meta.breaks[f])[i] : Infinity;
+const PT = [Infinity, 1000, 500, 300, 200], SHOP = [Infinity, 3, 2, 1, 0.5], FAMILIES = [0, 20, 25, 30, 35, 40], STUDENTS = [Infinity, 30, 20, 10, 5];
+Object.assign(state, { ptMax: Infinity, shopMax: Infinity, familiesMin: 0, studentsMax: Infinity });
+
+LAYERS.travel = {
+  ramp: RAMP,
+  expr: () => {
+    const row = state.places[0]?.row;
+    if (!row) return NODATA;
+    const groups = TT_BANDS.map(() => []);
+    for (let i = 0; i < row.length; i++) { const k = ttStep(row[i]); if (k != null) groups[k].push(i + 1); }
+    const arms = groups.flatMap((ids, k) => ids.length ? [ids, RAMP[k]] : []);
+    return arms.length ? ['match', ['id'], ...arms, NODATA] : NODATA;
+  },
+  ends: () => ['Under 15 min', 'Up to 2 hours'], mini: () => ['15 min', '2 hours'], ticks: () => ['15 min', '30', '45', '60'], tickEnd: '2 h',
+};
+
+// Legend steps: which step an area sits in, and whether the active filter on this same measure
+// rules a whole step out (partial steps stay lit)
+const stepOf = (v, breaks) => v == null ? null : breaks.filter(b => v >= b).length;
+const LEGEND = {
+  // Step i holds deciles 9 - 2i and 10 - 2i, so it is ruled out once its higher decile falls below the floor
+  dep: { classOf: p => p[state.colour] ? levelStep(p[state.colour]) : null, off: i => 10 - 2 * i < state.floor },
+  price: { classOf: p => p.price ? priceStep(p.price) : null,
+           off: i => i > 0 && PRICE_BREAKS[i - 1] >= state.budget },
+  crime: { classOf: p => p.crime_decile ? levelStep(p.crime_decile) : null, off: i => 10 - 2 * i < state.crimeFloor },
+  schools: { classOf: p => stepOf(p.prim_ok, SCHOOL_BREAKS), off: i => i < 4 && SCHOOL_BREAKS[i] - 1 < state.schoolsMin },
+  broadband: { classOf: p => stepOf(p.gigabit, GIGABIT_BREAKS), off: i => i < 4 && GIGABIT_BREAKS[i] <= state.gigabitMin },
+};
+LEGEND.travel = {
+  classOf: p => state.places[0] ? ttStep(state.places[0].row[p.fid - 1]) : null,
+  off: i => state.places[0] && (i === 0 ? 0 : TT_BANDS[i - 1]) >= state.places[0].max,
+};
+Object.assign(LEGEND, {
+  pct_families: { classOf: qClass('pct_families'), off: i => qUpper('pct_families', i) < state.familiesMin },
+  pct_students: { classOf: qClass('pct_students'), off: i => qLower('pct_students', i) > state.studentsMax },
+  median_age: { classOf: qClass('median_age'), off: () => false },
+  pt_m: { classOf: qClass('pt_m'), off: i => qLower('pt_m', i) > state.ptMax },
+});
+Object.assign(LEGEND, {
+  flood_rs_pct: { classOf: p => stepOf(p.flood_rs_pct, LAYERS.flood_rs_pct.breaks), off: i => fLower('flood_rs_pct', i) > state.floodMax },
+  flood_sw_pct: { classOf: p => stepOf(p.flood_sw_pct, LAYERS.flood_sw_pct.breaks), off: () => false },
+  noise_road_pct: { classOf: p => stepOf(p.noise_road_pct, LAYERS.noise_road_pct.breaks), off: i => fLower('noise_road_pct', i) > state.noiseMax },
+  no2_ugm3: { classOf: qClass('no2_ugm3'), off: () => false },
+  radon_class: { classOf: p => p.radon_class ? RADON_STEP[p.radon_class] : null, off: () => false },
+});
+const legendFor = () => LEGEND[state.colour] ?? LEGEND.dep;
+
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', protocol.tile);
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  bounds: [[-6.4, 49.9], [1.8, 55.85]],
+  fitBoundsOptions: { padding: 20 },
+  attributionControl: { compact: true, customAttribution: 'Data: MHCLG Indices of Deprivation 2025, HM Land Registry, police.uk, DfE, Ofsted, Ofcom, ONS Census 2011 and 2021 and Postcode Directory, DfT NaPTAN, NHS England ODS (Open Government Licence v3.0); GEOLYTIX Retail Points; Environment Agency, Defra, BGS/UKHSA radon atlas, OS Code-Point Open, VOA; neighbourhood names from the <a href="https://houseofcommonslibrary.github.io/msoanames/" target="_blank" rel="noopener">House of Commons Library</a> (Open Parliament Licence v3.0). Contains OS data © Crown copyright and database right; Royal Mail data © Royal Mail copyright and database right' },
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+// Keep the camera's centre clear of the panel (left on desktop, bottom sheet on mobile)
+const aside = document.querySelector('aside.controls');
+// Camera padding keeps the focus clear of the panels: controls on the left (or the bottom sheet on mobile),
+// plus the profile box on the right when it will be open
+function panelPadding(withProfile = false) {
+  if (innerWidth <= 640) return { bottom: innerHeight - aside.getBoundingClientRect().top, top: 0, left: 0, right: 0 };
+  const box = $('profile'), w = box && !box.hidden ? box.getBoundingClientRect().width : 360;
+  return { left: aside.getBoundingClientRect().right, right: withProfile ? w + 32 : 0, top: 0, bottom: 0 };
+}
+function framePanel() { map.setPadding(panelPadding()); }
+framePanel();
+// England is the whole dataset: the fitted national view is as far out as the map goes,
+// and panning stops a little past the coast
+const ENGLAND = [[-6.4, 49.9], [1.8, 55.85]];
+const PAN_LIMIT = [[-11, 47.5], [6.5, 58.5]];
+function lockToEngland() {
+  map.setMaxBounds(null);
+  map.setMinZoom(null);
+  const cam = map.cameraForBounds(ENGLAND, { padding: 20 });
+  if (!cam || !Number.isFinite(cam.zoom)) return;
+  map.setMinZoom(cam.zoom);
+  // MapLibre checks the pan limit against a whole canvas centred on the camera centre, ignoring the panel
+  // padding, so the limit must hold that canvas at the fitted view, or it zooms in and cuts off Cornwall
+  const { width: w, height: h } = map.getContainer().getBoundingClientRect(), world = 512 * 2 ** cam.zoom;
+  const c = maplibregl.MercatorCoordinate.fromLngLat(cam.center);
+  const nw = new maplibregl.MercatorCoordinate(c.x - w / 2 / world, c.y - h / 2 / world).toLngLat();
+  const se = new maplibregl.MercatorCoordinate(c.x + w / 2 / world, c.y + h / 2 / world).toLngLat();
+  map.setMaxBounds([[Math.min(PAN_LIMIT[0][0], nw.lng), Math.min(PAN_LIMIT[0][1], se.lat)],
+                    [Math.max(PAN_LIMIT[1][0], se.lng), Math.max(PAN_LIMIT[1][1], nw.lat)]]);
+}
+lockToEngland();
+map.fitBounds(ENGLAND, { padding: 20, duration: 0 });
+// MapLibre resizes itself only later, from its own observer, so bring its size up to date first: a page loaded
+// in a hidden tab still has the 400 × 300 stand-in, which the panel's padding fills and the England fit turns to NaN
+addEventListener('resize', () => { map.resize(); framePanel(); lockToEngland(); });
+
+// Credits load collapsed to the (i) button
+map.once('load', () => document.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show'));
+// The searched postcode is drawn as a map symbol (not a DOM marker) so labels collide with it and give way
+const pin = {
+  set(at) { map.getSource('pin')?.setData({ type: 'Point', coordinates: at }); },
+  remove() { map.getSource('pin')?.setData({ type: 'FeatureCollection', features: [] }); },
+};
+function pinImage() {
+  const r = 2, c = document.createElement('canvas'); c.width = c.height = 22 * r;
+  const g = c.getContext('2d'); g.scale(r, r);
+  const ring = (rad, col) => { g.beginPath(); g.arc(11, 11, rad, 0, 2 * Math.PI); g.fillStyle = col; g.fill(); };
+  ring(9, '#5e6ad2'); ring(8, '#010102'); ring(5, '#f7f8f8');
+  return { width: c.width, height: c.height, data: g.getImageData(0, 0, c.width, c.height).data };
+}
+
+// One definition per active filter drives the map, the national count, near misses and the reasons shown
+const depLabel = () => state.depMeasure === 'imd_decile' ? 'overall deprivation' : measureName().toLowerCase();
+function activeFilters() {
+  const a = attrs, f = [];
+  if (isFinite(state.budget)) f.push({
+    expr: ['<=', ['get', 'price'], state.budget], test: i => a.price[i] <= state.budget,
+    nearExpr: ['<=', ['get', 'price'], state.budget * 1.1], nearTest: i => a.price[i] <= state.budget * 1.1,
+    why: i => `${gbp(a.price[i] - state.budget)} over your limit` });
+  if (state.floor > 1) f.push({
+    expr: ['>=', ['get', state.depMeasure], state.floor], test: i => a[state.depMeasure][i] >= state.floor,
+    nearExpr: ['>=', ['get', state.depMeasure], state.floor - 1], nearTest: i => a[state.depMeasure][i] >= state.floor - 1,
+    why: i => `${state.depMeasure === 'imd_decile' ? `${depLevel(a.imd_decile[i])} deprivation`
+      : `${measureName()} domain ${depLevel(a[state.depMeasure][i]).toLowerCase()}`}, you chose ${depLimit()}` });
+  if (state.crimeFloor > 1) f.push({
+    expr: ['>=', ['coalesce', ['get', 'crime_decile'], 0], state.crimeFloor], test: i => (a.crime_decile[i] ?? 0) >= state.crimeFloor,
+    nearExpr: ['>=', ['coalesce', ['get', 'crime_decile'], 0], state.crimeFloor - 1], nearTest: i => (a.crime_decile[i] ?? 0) >= state.crimeFloor - 1,
+    why: i => a.crime_decile[i] ? `Outside your lowest&nbsp;${keepPct(state.crimeFloor)}% for crime` : 'No crime data here' });
+  if (state.schoolsMin > 0) f.push({
+    expr: ['>=', ['get', 'prim_ok'], state.schoolsMin], test: i => a.prim_ok[i] >= state.schoolsMin,
+    nearExpr: ['>=', ['get', 'prim_ok'], state.schoolsMin - 1], nearTest: i => a.prim_ok[i] >= state.schoolsMin - 1,
+    why: i => { const d = state.schoolsMin - a.prim_ok[i]; return `${d} positively rated primar${d === 1 ? 'y' : 'ies'} short`; } });
+  state.places.forEach(pl => {
+    if (!pl.expr || pl.exprMax !== pl.max) {
+      pl.expr = idSetExpr(i => pl.row[i] <= pl.max); pl.nearExpr = idSetExpr(i => pl.row[i] <= pl.max + 10); pl.exprMax = pl.max;
+    }
+    f.push({ expr: pl.expr, test: i => pl.row[i] <= pl.max, nearExpr: pl.nearExpr, nearTest: i => pl.row[i] <= pl.max + 10,
+      why: i => pl.row[i] === 255 ? `Over 2 hours to ${pl.label}` : `${pl.row[i]} min to ${pl.label}, you chose ${pl.max}` });
+  });
+  if (isFinite(state.ptMax)) f.push({
+    expr: ['<=', ['coalesce', ['get', 'pt_m'], 1e6], state.ptMax], test: i => (a.pt_m?.[i] ?? 1e6) <= state.ptMax,
+    nearExpr: ['<=', ['coalesce', ['get', 'pt_m'], 1e6], state.ptMax * 1.5], nearTest: i => (a.pt_m?.[i] ?? 1e6) <= state.ptMax * 1.5,
+    why: i => `Public transport ${dist(a.pt_m[i])} away, you chose ${dist(state.ptMax)}` });
+  if (isFinite(state.shopMax)) f.push({
+    expr: ['<=', ['coalesce', ['get', 'supermarket_km'], 999], state.shopMax], test: i => (a.supermarket_km?.[i] ?? 999) <= state.shopMax,
+    nearExpr: ['<=', ['coalesce', ['get', 'supermarket_km'], 999], state.shopMax + 0.5], nearTest: i => (a.supermarket_km?.[i] ?? 999) <= state.shopMax + 0.5,
+    why: i => `Supermarket ${a.supermarket_km[i]} km away, you chose ${state.shopMax} km` });
+  if (isFinite(state.floodMax)) f.push({
+    expr: ['<=', ['coalesce', ['get', 'flood_rs_pct'], 0], state.floodMax], test: i => (a.flood_rs_pct?.[i] ?? 0) <= state.floodMax,
+    nearExpr: ['<=', ['coalesce', ['get', 'flood_rs_pct'], 0], state.floodMax + 5], nearTest: i => (a.flood_rs_pct?.[i] ?? 0) <= state.floodMax + 5,
+    why: i => `${a.flood_rs_pct[i]}% of homes at river or sea flood risk, you chose up to ${state.floodMax}%` });
+  if (isFinite(state.noiseMax)) f.push({
+    expr: ['<=', ['coalesce', ['get', 'noise_road_pct'], 0], state.noiseMax], test: i => (a.noise_road_pct?.[i] ?? 0) <= state.noiseMax,
+    nearExpr: ['<=', ['coalesce', ['get', 'noise_road_pct'], 0], state.noiseMax + 10], nearTest: i => (a.noise_road_pct?.[i] ?? 0) <= state.noiseMax + 10,
+    why: i => `${a.noise_road_pct[i]}% of postcodes at 55 dB+ road noise, you chose up to ${state.noiseMax}%` });
+  if (state.familiesMin > 0) f.push({
+    expr: ['>=', ['coalesce', ['get', 'pct_families'], -1], state.familiesMin], test: i => (a.pct_families?.[i] ?? -1) >= state.familiesMin,
+    nearExpr: ['>=', ['coalesce', ['get', 'pct_families'], -1], state.familiesMin - 5], nearTest: i => (a.pct_families?.[i] ?? -1) >= state.familiesMin - 5,
+    why: i => `${a.pct_families[i]}% households with children, you chose ${state.familiesMin}%+` });
+  if (isFinite(state.studentsMax)) f.push({
+    expr: ['<=', ['coalesce', ['get', 'pct_students'], 999], state.studentsMax], test: i => (a.pct_students?.[i] ?? 999) <= state.studentsMax,
+    nearExpr: ['<=', ['coalesce', ['get', 'pct_students'], 999], state.studentsMax + 5], nearTest: i => (a.pct_students?.[i] ?? 999) <= state.studentsMax + 5,
+    why: i => `${a.pct_students[i]}% students, you chose up to ${state.studentsMax}%` });
+  if (state.gigabitMin > 0) f.push({
+    expr: ['>=', ['coalesce', ['get', 'gigabit'], -1], state.gigabitMin], test: i => (a.gigabit[i] ?? -1) >= state.gigabitMin,
+    nearExpr: ['>=', ['coalesce', ['get', 'gigabit'], -1], state.gigabitMin - 10], nearTest: i => (a.gigabit[i] ?? -1) >= state.gigabitMin - 10,
+    why: i => `Gigabit ${a.gigabit[i] ?? 0}%, you chose ${state.gigabitMin}%+` });
+  return f;
+}
+// Matches pass every filter; near misses fail exactly one (only meaningful with two or more filters)
+function scan() {
+  const F = activeFilters(), match = [], near = [];
+  for (let i = 0; i < attrs.price.length; i++) {
+    let fails = 0, which = -1;
+    for (let k = 0; k < F.length && fails < 2; k++) if (!F[k].test(i)) { fails++; which = k; }
+    if (fails === 0) match.push(i);
+    else if (fails === 1 && F.length >= 2 && F[which].nearTest(i)) near.push([i, which]);
+  }
+  return { F, match, near };
+}
+
+const crimeText = f => f > 1 ? `lowest ${keepPct(f)}%` : 'any';
+const schoolsText = n => n > 0 ? `${n} or more` : 'any';
+const gigabitText = g => g > 0 ? (g === 100 ? 'all premises' : `${g}%+ of premises`) : 'any';
+
+function renderControls() {
+  const L = layer();
+  $('legend-note').hidden = state.colour !== 'crime';
+  const about = $('layer-about'), more = $('about-more');
+  if (state.aboutFor !== state.colour) { state.aboutFor = state.colour; $('about').classList.remove('open'); more.textContent = 'More'; more.setAttribute('aria-expanded', 'false'); }
+  about.textContent = ABOUT[state.colour] ?? '';
+  more.hidden = !$('about').classList.contains('open') && about.scrollWidth <= about.clientWidth + 1;
+  const G = legendFor(), sel = state.selectedProps && meta ? G.classOf(state.selectedProps) : null;
+  for (const id of ['legend', 'mini-ramp']) $(id).style.gridTemplateColumns = `repeat(${L.ramp.length}, 1fr)`;
+  $('legend').innerHTML = $('mini-ramp').innerHTML = L.ramp.map((c, i) =>
+    `<span class="${[meta && G.off(i) ? 'off' : '', i === sel ? 'sel' : ''].join(' ').trim()}" style="background:${c}"></span>`).join('');
+  if (meta) {
+    [$('lo').textContent, $('hi').textContent] = L.ends();
+    const ticks = L.ticks?.();
+    $('legend-ticks').hidden = !ticks; $('legend-ends').hidden = !!ticks;
+    $('legend-ticks').innerHTML = ticks ? ticks.map((t, k) => `<span style="left:${(k + 1) * 20}%">${t}</span>`).join('')
+      + (L.tickEnd ? `<span class="end">${L.tickEnd}</span>` : '') : '';
+    [$('mini-lo').textContent, $('mini-hi').textContent] = L.mini();
+  }
+
+  $('floor-name').textContent = state.depMeasure === 'imd_decile' ? 'Overall deprivation' : `Deprivation: ${measureName().toLowerCase()} domain`;
+  const sliders = [
+    ['budget', isFinite(state.budget) ? gbp(state.budget) : 'any', isFinite(state.budget) ? `up to ${gbp(state.budget)}` : 'any price'],
+    ['floor', depLimit(), state.floor > 1 ? `${$('floor-name').textContent} ${depLimit()}` : 'any'],
+    ['crime', crimeText(state.crimeFloor), state.crimeFloor > 1 ? `${crimeText(state.crimeFloor)} for recorded crime` : 'any'],
+    ['schools', schoolsText(state.schoolsMin), schoolsText(state.schoolsMin)],
+    ['gigabit', gigabitText(state.gigabitMin), gigabitText(state.gigabitMin)],
+    ['pt', isFinite(state.ptMax) ? dist(state.ptMax) : 'any', isFinite(state.ptMax) ? `a regular stop within ${dist(state.ptMax)}` : 'any distance'],
+    ['shop', isFinite(state.shopMax) ? `${state.shopMax} km` : 'any', isFinite(state.shopMax) ? `within ${state.shopMax} km` : 'any distance'],
+    ['flood', isFinite(state.floodMax) ? `up to ${state.floodMax}% of homes` : 'any', isFinite(state.floodMax) ? `at most ${state.floodMax}% of homes at risk` : 'any'],
+    ['noise', isFinite(state.noiseMax) ? `up to ${state.noiseMax}% of postcodes` : 'any', isFinite(state.noiseMax) ? `at most ${state.noiseMax}% of postcodes at 55 dB or more` : 'any'],
+    ['families', state.familiesMin ? `${state.familiesMin}%+` : 'any', state.familiesMin ? `at least ${state.familiesMin}% of households` : 'any'],
+    ['students', isFinite(state.studentsMax) ? `up to ${state.studentsMax}%` : 'any', isFinite(state.studentsMax) ? `students at most ${state.studentsMax}% of adults` : 'any'],
+  ];
+  const extra = [isFinite(state.ptMax), isFinite(state.shopMax), isFinite(state.floodMax), isFinite(state.noiseMax), state.familiesMin > 0, isFinite(state.studentsMax)].filter(Boolean).length;
+  $('more-count').textContent = extra ? String(extra) : '';
+  for (const [id, text, aria] of sliders) {
+    const el = $(id);
+    el.style.setProperty('--fill', `${(el.value - el.min) / (el.max - el.min) * 100}%`);
+    el.setAttribute('aria-valuetext', aria);
+    $(id + '-out').textContent = text;
+  }
+
+  if (!attrs) return;
+  const { F, match, near } = state.scan = scan();
+  const hints = [];
+  const first = state.selected == null && !state.everSelected;
+  if (match.length === 0) hints.push(near.length ? 'No exact matches; the near misses each fail one filter.' : 'Loosen a filter to see more.');
+  if (state.crimeFloor > 1) hints.push('Greater Manchester publishes no police.uk data, so it drops out while the crime filter is on.');
+  const nearToggle = F.length >= 2 && near.length
+    ? `<label class="near-toggle"><input type="checkbox" id="near" ${state.showNear ? 'checked' : ''}>${num(near.length)} near misses</label>` : '';
+  $('count').innerHTML = `<b>${num(match.length)}</b> of ${num(attrs.price.length)} neighbourhoods match` +
+    `<span class="count-actions"><button type="button" class="list-btn" data-action="list">View list</button>` +
+    `${F.length ? '<button type="button" class="list-btn clear-btn" data-action="clear-filters">Clear filters</button>' : ''}${nearToggle}</span>` +
+    (first ? '<span class="hint first">Click an area or search a postcode for its profile.</span>' : '') +
+    hints.map(h => `<span class="hint">${h}</span>`).join('');
+  $('shortlist-btn').hidden = !state.shortlist.length;
+  $('shortlist-n').textContent = state.shortlist.length;
+}
+
+const NEAR = '#36383e';  // near misses: one flat grey between the dimmed fill and the lowest ramp step
+function renderMap() {
+  if (!map.getLayer('lsoa-fill') || !meta || !state.scan) return;
+  const { F } = state.scan, colour = layer().expr(state.colour);
+  if (!F.length) {
+    map.setPaintProperty('lsoa-fill', 'fill-color', colour);
+    map.setPaintProperty('lsoa-fill', 'fill-opacity', 0.7);
+    return;
+  }
+  // Count failed filters per area: 0 = match (full colour), 1 = near miss (flat grey), else flat dimmed
+  const parts = F.map(f => ['case', f.expr, 0, 1]);
+  const fails = parts.length === 1 ? parts[0] : ['+', ...parts];
+  const nearOn = state.showNear && F.length >= 2;
+  // A near miss fails exactly one filter, and only narrowly (within that filter's margin)
+  const isNear = ['all', ['==', fails, 1], ['all', ...F.map(f => f.nearExpr)]];
+  map.setPaintProperty('lsoa-fill', 'fill-color',
+    ['case', ['==', fails, 0], colour, ...(nearOn ? [isNear, NEAR] : []), DIMMED]);
+  map.setPaintProperty('lsoa-fill', 'fill-opacity',
+    ['case', ['==', fails, 0], 0.82, ...(nearOn ? [isNear, 0.9] : []), 0.7]);
+}
+
+// Place names over areas the filters rule out are hidden, so the names left on the map mark places still in play.
+// Each basemap place has a stable id and is judged by the neighbourhood under its point.
+const PLACE_FILTERS = {};
+let placeShown = null, placeHidden = new Set(), placeTimer = 0;
+// The basemap's legacy filters as expressions, so the hide rule can join them
+function toExpr(f) {
+  if (!Array.isArray(f)) return f;
+  const [op, k, ...v] = f, g = ['get', k];
+  if (op === 'all' || op === 'any') return [op, ...f.slice(1).map(toExpr)];
+  if (op === 'has') return ['has', k];
+  if (op === '!has') return ['!', ['has', k]];
+  if (op === 'in') return ['in', g, ['literal', v]];
+  if (op === '!in') return ['!', ['in', g, ['literal', v]]];
+  return [op, g, v[0]];
+}
+function updatePlaceLabels(reset) {
+  if (!map.getLayer('lsoa-fill') || !attrs) return;
+  if (reset) {
+    const { F, match, near } = state.scan ?? { F: [] };
+    placeHidden = new Set();
+    placeShown = F.length ? new Uint8Array(attrs.price.length) : null;
+    if (placeShown) {
+      for (const i of match) placeShown[i] = 1;
+      if (state.showNear && F.length >= 2) for (const i of near) placeShown[i] = 1;
+    }
+  }
+  if (placeShown) {
+    const { width, height } = map.getCanvas().getBoundingClientRect();
+    for (const f of map.querySourceFeatures('carto', { sourceLayer: 'place' })) {
+      if (f.id == null) continue;
+      const px = map.project(f.geometry.coordinates);
+      if (px.x < 0 || px.y < 0 || px.x > width || px.y > height) continue;
+      const area = map.queryRenderedFeatures(px, { layers: ['lsoa-fill'] })[0];
+      if (area) placeShown[area.id - 1] ? placeHidden.delete(f.id) : placeHidden.add(f.id);
+    }
+  }
+  const hide = placeHidden.size ? ['!', ['in', ['id'], ['literal', [...placeHidden]]]] : null;
+  for (const [id, own] of Object.entries(PLACE_FILTERS))
+    map.setFilter(id, hide ? (own ? ['all', own, hide] : hide) : own);
+}
+// Filters change with every slider step; judge the names once the slider settles
+function schedulePlaceLabels() {
+  clearTimeout(placeTimer);
+  // Judge again once tiles still loading have drawn
+  placeTimer = setTimeout(() => { updatePlaceLabels(true); map.once('idle', () => updatePlaceLabels()); }, 150);
+}
+
+function render() {
+  renderControls(); renderMap(); schedulePlaceLabels();
+  if (state.view === 'profile' && state.selectedProps && $('outside')) $('outside').innerHTML = outsideNote(state.selectedProps);
+  if (state.view === 'list' || state.view === 'shortlist' || state.view === 'similar') renderBox(false);
+  for (const b of $('detail').querySelectorAll('[data-layer]')) b.setAttribute('aria-pressed', b.dataset.layer === state.colour);
+}
+
+function outsideNote(p) {
+  if (!attrs) return '';
+  const i = p.fid - 1, why = activeFilters().filter(f => !f.test(i)).map(f => f.why(i));
+  return why.length ? `<span class="outside">${why.join(' · ')}</span>` : '';
+}
+
+const LAYER_NAMES = {
+  imd_decile: 'overall deprivation', price: 'median house price', crime: 'recorded crime',
+  schools: 'positively rated primary schools', broadband: 'gigabit broadband', travel: 'travel time to your first place',
+  pct_families: 'households with children', pct_students: 'students', median_age: 'median age', pt_m: 'distance to public transport',
+  flood_rs_pct: 'river and sea flood risk', flood_sw_pct: 'surface water flood risk', noise_road_pct: 'road noise', no2_ugm3: 'air quality (NO₂)', radon_class: 'radon',
+  d_income: 'income deprivation', d_employment: 'employment deprivation', d_education: 'education and skills deprivation',
+  d_health: 'health deprivation', d_crime: 'the crime deprivation domain', d_housing: 'barriers to housing and services',
+  d_environment: 'living environment deprivation',
+};
+// A profile label that recolours the map by its own measure
+const layerBtn = (layer, text, note = '') =>
+  `<button type="button" class="layer-link" data-layer="${layer}" aria-pressed="${state.colour === layer}"
+     title="Colour the map by ${LAYER_NAMES[layer]}${note ? ' · ' + note : ''}">${text}</button>`;
+
+// An amenity: a long name wraps and the distance stays on the end of it; detail sits in the tooltip
+const oneLine = (name, km, more) => `<dd class="amen" title="${name}, ${km} km${more ? ' · ' + more : ''} · straight-line"><span class="nm">${name}</span><span class="km">&nbsp;· ${km} km</span></dd>`;
+// Nearest stop with at least an hourly daytime service, and how busy the stops around the area are
+const PT_MODE = { bus: 'Bus', tram: 'Tram', metro: 'Metro', underground: 'Underground', dlr: 'DLR', rail: 'Train', ferry: 'Ferry' };
+// Nearest regular stop of every mode within 2 km, nearest first ("mode|stop|metres;…")
+const ptModes = p => (p.pt_modes ?? '').split(';').filter(Boolean).map(t => { const [mode, name, m] = t.split('|'); return { mode, name, m: +m }; });
+function transitRow(p) {
+  if (p.pt_m == null) return '';
+  const near = ptModes(p), stops = near.length ? near : [{ mode: p.pt_mode, name: p.pt_stop, m: p.pt_m }];
+  return `<dt>${layerBtn('pt_m', 'Public transport', 'nearest stop with at least one departure an hour, 7am to 7pm on a weekday')}</dt>
+  <dd title="Nearest stop of each kind with at least one departure an hour, 7am to 7pm on a weekday · straight-line">${
+    stops.map(t => `<span class="pt"><span class="mode">${PT_MODE[t.mode] ?? 'Stop'}</span> ${t.name}<span class="km">&nbsp;· ${dist(t.m)}</span></span>`).join('')
+  }<span>${p.pt_per_hour
+      ? `${p.pt_per_hour} ${p.pt_per_hour === 1 ? 'departure' : 'departures'} an hour from stops within 400 m` : 'No regular stop within 400 m'}</span></dd>`;
+}
+function aroundBlock(p) {
+  const crime = p.crime_rate == null
+    ? '<dd>No figure<span>Greater Manchester publishes no police.uk data</span></dd>'
+    : `<dd>${num(Math.round(p.crime_rate))} per 1,000 residents<span>A year · ${crimeBand(p.crime_decile)}</span>${
+      p.day_ratio >= meta.daytime_ratio ? `<span title="Census 2011: about ${Math.round(p.day_ratio)} people here on a workday for every resident">Busy by day, so rates per resident run high</span>` : ''}</dd>`;
+  const schools = (ok, n, phase) => n
+    ? `<dd><button type="button" class="list-btn" data-action="schools" data-phase="${phase}">${ok} of ${n} positively rated</button></dd>`
+    : '<dd>None</dd>';
+  const bb = p.gigabit == null ? '<dd>No figure</dd>'
+    : `<dd>Gigabit to ${p.gigabit}% of premises${p.no_decent > 0 ? `<span>${p.no_decent}% can’t get decent broadband</span>` : ''}</dd>`;
+  return `
+    <p class="sublabel">Around here <button type="button" class="list-btn similar-link" data-action="similar">Find similar areas</button></p>
+    <dl class="facts around">
+      <dt>${layerBtn('crime', 'Recorded crime', `police.uk, ${month(meta.crime_window[0])} to ${month(meta.crime_window[1])}: ${
+        meta.crime_types.map(t => t.toLowerCase()).join(', ')}. Not anti-social behaviour, shoplifting, drugs or public order`)}</dt>${crime}
+      <dt>${layerBtn('schools', `Primaries, ${meta.primary_km} km`, 'positively rated: Good or better, or expected standard')}</dt>${schools(p.prim_ok, p.prim_n, 'p')}
+      <dt>Secondaries, ${meta.secondary_km} km</dt>${schools(p.sec_ok, p.sec_n, 's')}
+      ${transitRow(p)}
+      ${p.rail_km != null && !ptModes(p).some(t => t.mode === 'rail') ? `<dt>Station</dt>${oneLine(p.rail_station, p.rail_km, p.metro_km != null && p.metro_km <= 3 ? `Nearest metro or tram stop: ${p.metro_stop}, ${p.metro_km} km` : '')}` : ''}
+      ${p.gp_km != null ? `<dt>GP</dt>${oneLine(p.gp_practice, p.gp_km, `${p.gp_n_2km} ${p.gp_n_2km === 1 ? 'practice' : 'practices'} within 2 km`)}` : ''}
+      ${p.supermarket_km != null ? `<dt>Supermarket</dt>${oneLine(p.supermarket_retailer, p.supermarket_km, `${p.supermarket_n_2km} within 2 km`)}` : ''}
+      <dt>${layerBtn('broadband', 'Broadband')}</dt>${bb}
+      ${state.places.map(pl => { const j = journey(pl, p.fid - 1);
+        const main = journeyText(j);
+        const alts = j.pt === 0 ? '' : [
+          j.mode === 'train' ? `Bus only: ${j.bus === 255 ? 'over 2 hours' : fmtMin(j.bus)}` : '',
+          j.mode !== 'walk' ? `Walking: about ${fmtMin(j.walk)}` : (j.pt !== 255 && j.pt < j.walk ? '' : `Public transport: ${j.pt === 255 ? 'over 2 hours' : fmtMin(j.pt)}`),
+        ].filter(Boolean).join(' · ');
+        return `<dt>${layerBtn('travel', `To ${pl.label}`)}</dt><dd>${main}<span>${alts ? alts + ' · ' : ''}weekday 8am</span></dd>`; }).join('')}
+    </dl>`;
+}
+const PORTALS = {
+  sale: [
+    ['Rightmove', o => `https://www.rightmove.co.uk/property-for-sale/${o}.html`],
+    ['Zoopla', o => `https://www.zoopla.co.uk/for-sale/property/${o.toLowerCase()}/`],
+    ['OnTheMarket', o => `https://www.onthemarket.com/for-sale/property/${o.toLowerCase()}/`],
+  ],
+  rent: [
+    ['Rightmove', o => `https://www.rightmove.co.uk/property-to-rent/${o}.html`],
+    ['Zoopla', o => `https://www.zoopla.co.uk/to-rent/property/${o.toLowerCase()}/`],
+    ['OnTheMarket', o => `https://www.onthemarket.com/to-rent/property/${o.toLowerCase()}/`],
+    ['OpenRent', o => `https://www.openrent.co.uk/properties-to-rent/${o.toLowerCase()}`],
+  ],
+};
+const portalLinks = (list, o, kind) => list.map(([name, url]) =>
+  `<a href="${url(o)}" target="_blank" rel="noopener noreferrer" aria-label="${name}: homes ${kind} in ${o} (opens in a new tab)">${name}</a>`).join('');
+
+function homesBlock(o) {
+  if (!o) return '';
+  return `
+    <p class="sublabel">Homes in ${o}</p>
+    <div class="homes">
+      <div class="row"><span>For sale</span><span class="links">${portalLinks(PORTALS.sale, o, 'for sale')}</span></div>
+      <div class="row"><span>To rent</span><span class="links">${portalLinks(PORTALS.rent, o, 'to rent')}</span></div>
+    </div>`;
+}
+
+// Saved under the old product name before the rename to Whereabouts; carried over once
+for (const k of ['shortlist', 'tour']) try {
+  const v = localStorage.getItem(`decile.${k}`);
+  if (v !== null && localStorage.getItem(`whereabouts.${k}`) === null) localStorage.setItem(`whereabouts.${k}`, v);
+  localStorage.removeItem(`decile.${k}`);
+} catch {}
+const SHORTLIST_KEY = 'whereabouts.shortlist';
+function loadShortlist() {
+  try { return (JSON.parse(localStorage.getItem(SHORTLIST_KEY)) ?? []).filter(n => Number.isInteger(n) && n >= 1 && n <= 33755); }
+  catch { return []; }
+}
+function saveShortlist() { try { localStorage.setItem(SHORTLIST_KEY, JSON.stringify(state.shortlist)); } catch {} }
+state.shortlist = loadShortlist();
+state.view = null; state.back = null; state.sort = 'price-asc'; state.listLimit = 50; state.nearLimit = 20; state.showNear = true;
+
+const BOOKMARK = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3.5 1.75h7v10.5L7 9.6l-3.5 2.65z" stroke-linejoin="round"/></svg>';
+const BACK = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const saved = fid => state.shortlist.includes(fid);
+const saveBtn = fid => `<button type="button" class="save" data-save="${fid}" aria-pressed="${saved(fid)}"
+  aria-label="${saved(fid) ? 'Remove from' : 'Add to'} shortlist" title="${saved(fid) ? 'Remove from' : 'Add to'} shortlist">${BOOKMARK}</button>`;
+const backBtn = () => state.back
+  ? `<button type="button" class="back" data-action="back">${BACK}${{ list: 'Results', shortlist: 'Shortlist', similar: 'Similar areas' }[state.back]}</button>` : '';
+
+function profileHTML(p) {
+  const priceNote = p.price_src === 'lsoa' ? `${p.n_sales} sales in 2 years` : 'Few sales here, so this is the wider area median';
+  return `
+    ${backBtn()}
+    <div class="head"><h2>${p.area ?? p.lsoa_name}</h2>${saveBtn(p.fid)}</div>
+    <div class="where">${p.lad} · ${state.searchOutcode ?? p.outcode}${p.area_parts > 1
+      ? ` · <button type="button" class="part" data-action="part" aria-expanded="false" aria-controls="part-note">one of ${p.area_parts} small areas</button>` : ''}<span id="outside" aria-live="polite">${outsideNote(p)}</span></div>
+    ${p.area_parts > 1 ? `<p class="part-note" id="part-note" hidden>Figures here describe this small area, not all of ${p.area}. Official statistical area ${p.lsoa_name} (${p.lsoa}).</p>` : ''}
+    <div class="stats">
+      <div class="stat"><div class="k">${layerBtn('imd_decile', 'Deprivation')}</div><div class="v">${depLevel(p.imd_decile)}</div>
+        <div class="n" title="Rank ${num(p.imd_rank)} of ${num(meta.lsoas)}, where 1 is most deprived">${depBand(p.imd_decile)}</div></div>
+      <div class="stat"><div class="k">${layerBtn('price', 'Median price')}</div><div class="v">${p.price ? gbp(p.price) : '–'}</div>
+        <div class="n">${priceNote}</div></div>
+    </div>
+    ${aroundBlock(p)}
+    ${homesBlock(state.searchOutcode ?? p.outcode)}
+    ${peopleBlock(p)}
+    ${envBlock(p)}
+    <details class="section" ${state.openSections.has('domains') ? 'open' : ''} data-section="domains">
+      <summary>Deprivation by domain <span>${DOMAINS.filter(([k]) => p[k] <= 3).map(([, n]) => n.toLowerCase()).join(', ') || 'no domain in the most deprived 30%'}${DOMAINS.some(([k]) => p[k] <= 3) ? ' in the most deprived 30%' : ''}</span></summary>
+      <div class="domains">
+        ${DOMAINS.map(([k, name]) => `
+          <div class="dom"><span>${layerBtn(k, name)}</span>
+            <span class="bar" role="img" aria-label="${depBand(p[k])}" title="${depBand(p[k])}">${Array.from({ length: 10 }, (_, i) => `<i${i < 11 - p[k] ? ' class="on"' : ''}></i>`).join('')}</span></div>`).join('')}
+        <div class="dom axis" aria-hidden="true"><span></span><span><span>Least deprived</span><span>Most</span></span></div>
+      </div>
+      <p class="fine">Each domain ranks the area, not any one household. Housing and services covers distance to a GP, school, supermarket and post office as well as overcrowding and affordability; environment covers housing condition, air quality and road accidents; crime is the risk of violence, burglary, theft and criminal damage.</p>
+    </details>`;
+}
+state.openSections = new Set();
+
+// Schools: every counted school with its Ofsted outcome, read the first time a school list opens (about 0.7 MB)
+let schoolData = null, schoolLoad = null, schoolsTried = false;
+const loadSchools = () => schoolLoad ??= fetch('data/schools.json').then(r => r.ok ? r.json() : null).catch(() => null)
+  .then(d => { schoolData = d; schoolsTried = true; return d; });
+// An area's schools by straight-line distance from its population-weighted centroid: the same test as its counts
+function schoolsNear(fid, phase) {
+  const S = schoolData, i = fid - 1, cx = S.cx[i], cy = S.cy[i];
+  const r2 = ((phase === 'p' ? S.primary_km : S.secondary_km) * 1000) ** 2, near = [];
+  for (let j = 0; j < S.urn.length; j++) {
+    if (S.phase[j] !== phase && S.phase[j] !== 'a') continue;
+    const d2 = (S.x[j] - cx) ** 2 + (S.y[j] - cy) ** 2;
+    if (d2 <= r2) near.push({ j, km: Math.sqrt(d2) / 1000 });
+  }
+  return near.sort((a, b) => a.km - b.km);
+}
+// Map points and list marks: filled, hollow, or a faint ring when there is no grade in the data to judge by
+const SCHOOL_STATUS = { 1: { cls: 'ok', say: 'Positively rated' }, 0: { cls: '', say: 'Not positively rated' },
+  '-': { cls: 'unk', say: 'No current grade' } };
+const OFSTED = urn => `https://reports.ofsted.gov.uk/provider/21/${urn}`;
+const PERFORMANCE = urn => `https://www.compare-school-performance.service.gov.uk/school/${urn}`;
+function schoolRow({ j, km }) {
+  const S = schoolData, urn = S.urn[j], name = S.name[j], era = S.eras[S.era[j]], st = SCHOOL_STATUS[S.ok[j]];
+  return `<li class="school" data-urn="${urn}">
+      <i class="mark ${st.cls}" aria-hidden="true"></i><span class="vh">${st.say}: </span>
+      <div class="s-body">
+        <div class="s-top"><span class="s-name">${name}</span><span class="s-km">${km.toFixed(1)} km</span></div>
+        <div class="s-out">${S.outs[S.out[j]]}${era ? `<span> · <span class="s-era">${era[0].toLowerCase() + era.slice(1)}</span></span>` : ''}${S.phase[j] === 'a' ? '<span> · all-through</span>' : ''}</div>
+        <div class="s-links">
+          <a href="${OFSTED(urn)}" target="_blank" rel="noopener noreferrer" aria-label="${name}: Ofsted reports (opens in a new tab)">Ofsted report</a>
+          <a href="${PERFORMANCE(urn)}" target="_blank" rel="noopener noreferrer" aria-label="${name}: exam results on DfE Compare school performance (opens in a new tab)">Exam results</a>
+        </div>
+      </div>
+    </li>`;
+}
+function schoolsHTML() {
+  const p = state.selectedProps, primary = state.schoolPhase === 'p', km = primary ? meta.primary_km : meta.secondary_km;
+  const top = `
+    <button type="button" class="back" data-action="to-profile">${BACK}${p.area ?? p.lsoa_name}</button>
+    <div class="head"><h2>${primary ? 'Primary' : 'Secondary'} schools</h2></div>`;
+  if (!schoolData) return `${top}<div class="where" role="status">${schoolsTried ? 'The school list could not be loaded. Try again later.' : 'Loading schools…'}</div>`;
+  const near = schoolsNear(p.fid, state.schoolPhase), n = k => near.filter(s => schoolData.ok[s.j] === k).length;
+  const ok = n('1'), unk = n('-');
+  return `${top}
+    <div class="where" title="Straight-line distance from where most people in this area live"><span class="tok">${near.length} within ${km} km</span> · <span class="tok"><i class="mark ok" aria-hidden="true"></i>${ok} positively rated</span>${
+      unk ? ` · <span class="tok"><i class="mark unk" aria-hidden="true"></i>${unk} without a current grade</span>` : ''}</div>
+    <p class="fine">Distance is not a catchment: admissions depend on each school’s own criteria.</p>
+    <ol class="schools">${near.map(schoolRow).join('')}</ol>
+    <p class="fine">Positively rated: Good or better, or expected standard; a grade from before September 2019 counts where a later ungraded inspection kept or raised it. Without a current grade: not yet inspected, or no earlier grade on record. Ofsted management information, ${meta.ofsted_date ? month(meta.ofsted_date) : ''}, and Aug 2019; state-funded schools from DfE Get Information about Schools, ${meta.gias_date ? month(meta.gias_date) : ''}.</p>`;
+}
+
+const split = (parts) => `<div class="split" aria-hidden="true">${parts.map(([, v]) => `<i style="flex:${Math.max(v, 0.5)}"></i>`).join('')}</div>
+  <div class="split-key">${parts.map(([label, v]) => `<span>${label} <b>${Math.round(v)}%</b></span>`).join('')}</div>`;
+function envBlock(p) {
+  if (p.flood_rs_pct == null) return '';
+  const flags = [];
+  if (p.flood_rs_pct >= 5) flags.push(`${Math.round(p.flood_rs_pct)}% of homes at river or sea flood risk`);
+  if (p.flood_sw_pct >= 15) flags.push(`surface water risk for ${Math.round(p.flood_sw_pct)}% of postcodes`);
+  if (p.noise_road_pct >= 50) flags.push('road noise 55 dB+ at most postcodes');
+  if (p.radon_class >= 4) flags.push(`radon ${RADON_BANDS[p.radon_class - 1]}`);
+  if (meta.breaks.no2_ugm3 && p.no2_ugm3 >= meta.breaks.no2_ugm3[8]) flags.push('NO₂ in the highest 10%');
+  return `
+    <details class="section" ${state.openSections.has('env') ? 'open' : ''} data-section="env">
+      <summary>Environment <span>${flags.length ? flags.join(' · ') : 'no notable flood, noise, air or radon flags'}</span></summary>
+      <dl class="facts">
+        <dt>${layerBtn('flood_rs_pct', 'Rivers and sea')}</dt><dd>${p.flood_rs_pct}% of homes<span>at high or medium flood risk</span></dd>
+        <dt>${layerBtn('flood_sw_pct', 'Surface water')}</dt><dd>${p.flood_sw_pct}% of postcodes<span>at high or medium flood risk</span></dd>
+        <dt>${layerBtn('noise_road_pct', 'Road noise')}</dt><dd>${p.noise_road_pct}% of postcodes<span>at 55&nbsp;dB or more, day, evening and night</span></dd>
+        <dt>Rail noise</dt><dd>${p.noise_rail_pct}% of postcodes<span>at 55&nbsp;dB or more, day, evening and night</span></dd>
+        <dt>${layerBtn('no2_ugm3', 'Air')}</dt><dd>NO₂ ${p.no2_ugm3} · PM2.5 ${p.pm25_ugm3} µg/m³<span>Nitrogen dioxide and fine particles; WHO guidelines 10 and&nbsp;5. England median NO₂ ${meta.breaks.no2_ugm3?.[4] ?? '–'}</span></dd>
+        <dt>${layerBtn('radon_class', 'Radon')}</dt><dd>${RADON_BANDS[p.radon_class - 1] ?? '–'}<span>of homes estimated above the action level</span></dd>
+      </dl>
+      <p class="fine">Radon is a natural radioactive gas from the ground; at 200&nbsp;Bq/m³ or more the UK Health Security Agency advises reducing it. The band is the highest in the 1&nbsp;km square where most residents live, so only a home test measures a particular home. High or medium flood risk means at least a 1% chance in any year; noise is a day, evening and night level with evening and night counted louder. Sources: Environment Agency flood maps; Defra 2021 noise maps (aircraft not included) and 2024 background air quality; BGS/UKHSA radon atlas.</p>
+    </details>`;
+}
+function peopleBlock(p) {
+  if (p.median_age == null) return '';
+  return `
+    <details class="section" ${state.openSections.has('people') ? 'open' : ''} data-section="people">
+      <summary>Who lives here <span>median age ${Math.round(p.median_age)} · ${Math.round(p.pct_families)}% households with children · ${Math.round(p.pct_students)}% students</span></summary>
+      <dl class="facts">
+        <dt>${layerBtn('median_age', 'Median age')}</dt><dd>${Math.round(p.median_age)}</dd>
+        <dt>${layerBtn('pct_families', 'With children')}</dt><dd>${p.pct_families}% of households<span>${p.pct_one_person_hh}% live alone</span></dd>
+        <dt>${layerBtn('pct_students', 'Students')}</dt><dd>${p.pct_students}% of adults</dd>
+        <dt>Density</dt><dd>${p.density_pph} people per hectare</dd>
+      </dl>
+      <p class="sublabel">Ages</p>
+      ${split([['Under 16', p.pct_under16], ['16–29', p.pct_16_29], ['30–64', p.pct_30_64], ['65+', p.pct_65plus]])}
+      <p class="sublabel" style="margin-top:12px">Homes</p>
+      ${split([['Owned', p.pct_owned], ['Social rent', p.pct_social_rent], ['Private rent', p.pct_private_rent]])}
+      <p class="fine" style="margin-top:8px">Census 2021.</p>
+    </details>`;
+}
+
+const SORTS = {
+  // Sort by the journey the row shows: on foot when walking is as quick as public transport
+  'travel-asc': ['Shortest journey', i => state.places.length ? Math.max(...state.places.map(pl => Math.min(pl.row[i], walkMinutes(pl, i)))) : 0],
+  'price-asc': ['Lowest price', i => attrs.price[i] ?? Infinity],
+  'price-desc': ['Highest price', i => -(attrs.price[i] ?? 0)],
+  'dep-desc': ['Least deprived', i => -attrs.imd_decile[i]],
+  'crime-desc': ['Lowest recorded crime', i => -(attrs.crime_decile[i] ?? 0)],
+  'schools-desc': ['Most positively rated primaries', i => -attrs.prim_ok[i]],
+  'gigabit-desc': ['Most gigabit coverage', i => -(attrs.gigabit[i] ?? -1)],
+};
+const areaName = i => attrs.area?.[i] ?? attrs.name[i];
+const crimeShort = i => attrs.crime_decile[i] ? `crime ${crimeBand(attrs.crime_decile[i]).replace(' in England', '').toLowerCase()}` : 'no crime data';
+// Neighbourhood names that occur more than once in a list, so those rows can name their small area
+function repeatedNames(ids) {
+  const seen = new Map();
+  for (const i of ids) seen.set(areaName(i), (seen.get(areaName(i)) ?? 0) + 1);
+  return new Set([...seen].filter(([, n]) => n > 1).map(([name]) => name));
+}
+function resultRow(i, why, repeated) {
+  const a = attrs, where = repeated?.has(areaName(i)) ? a.name[i] : a.lads[a.lad[i]];
+  return `<li><button type="button" class="result" data-fid="${i + 1}">
+      <span class="r-name" title="${attrs.name[i]}">${areaName(i)} <span class="r-where">${where} · ${a.outcode[i] ?? ''}</span></span>
+      <span class="r-meta">${[
+        ...state.places.map(pl => journeyText(journey(pl, i), true)),
+        a.price[i] ? gbp(a.price[i]) : '–', depShort(a.imd_decile[i]), crimeShort(i),
+      ].map(t => `<span class="tok">${t}</span>`).join(' · ')}</span>
+      ${why ? `<span class="r-why">${why}</span>` : ''}
+    </button>${saveBtn(i + 1)}</li>`;
+}
+function listHTML() {
+  const { F, match, near } = state.scan;
+  const key = SORTS[state.sort][1];
+  const top = [...match].sort((x, y) => key(x) - key(y)).slice(0, state.listLimit);
+  const nearTop = [...near].sort((x, y) => key(x[0]) - key(y[0])).slice(0, state.nearLimit);
+  const rep = repeatedNames([...top, ...nearTop.map(([i]) => i)]);
+  return `
+    <div class="head"><h2>${F.length ? 'Matching areas' : 'All areas'}</h2></div>
+    <div class="where">${num(match.length)} ${match.length === 1 ? 'area matches' : 'areas match'} your filters</div>
+    <div class="list-tools">
+      <label for="sort">Sort</label>
+      <select id="sort">${Object.entries(SORTS).filter(([k]) => k !== 'travel-asc' || state.places.length).map(([k, [label]]) => `<option value="${k}" ${k === state.sort ? 'selected' : ''}>${label}</option>`).join('')}</select>
+    </div>
+    <ol class="results">${top.map(i => resultRow(i, '', rep)).join('')}</ol>
+    ${match.length > top.length ? `<button type="button" class="more" data-action="more">Show ${Math.min(50, match.length - top.length)} more</button>` : ''}
+    ${near.length ? `
+      <p class="sublabel near-head">Near misses <span>${num(near.length)} narrowly miss one filter</span></p>
+      <ol class="results">${nearTop.map(([i, k]) => resultRow(i, F[k].why(i), rep)).join('')}</ol>
+      ${near.length > nearTop.length ? `<button type="button" class="more" data-action="more-near">Show ${Math.min(20, near.length - nearTop.length)} more</button>` : ''}` : ''}`;
+}
+
+function shortlistHTML() {
+  const ids = state.shortlist.map(f => f - 1), a = attrs, rep = repeatedNames(ids);
+  if (!ids.length) return `<div class="head"><h2>Shortlist</h2></div>
+    <p class="where">Save areas with the bookmark in a profile or the results list, then compare them here.</p>`;
+  const rows = [
+    ['Median price', i => a.price[i] ? gbp(a.price[i]) : '–'],
+    ['Deprivation', i => `${depLevel(a.imd_decile[i])}<span>${depShort(a.imd_decile[i])}</span>`],
+    ['Recorded crime', i => a.crime_rate[i] == null ? 'No figure' : `${num(Math.round(a.crime_rate[i]))} per 1,000<span>${crimeBand(a.crime_decile[i]).replace(' in England', '')}</span>`],
+    [`Primaries, ${meta.primary_km} km`, i => a.prim_n[i] ? `${a.prim_ok[i]} of ${a.prim_n[i]}<span>positively rated</span>` : 'None'],
+    [`Secondaries, ${meta.secondary_km} km`, i => `${a.sec_ok[i]}<span>positively rated</span>`],
+    ['Gigabit', i => a.gigabit[i] == null ? '–' : `${a.gigabit[i]}% of premises`],
+    ...state.places.map(pl => [`To ${pl.label}`, i => { const j = journey(pl, i);
+      return journeyText(j, true); }]),
+    ['Median age', i => a.median_age?.[i] != null ? Math.round(a.median_age[i]) : '–'],
+    ['With children', i => a.pct_families?.[i] != null ? `${a.pct_families[i]}% of households` : '–'],
+    ['Students', i => a.pct_students?.[i] != null ? `${a.pct_students[i]}% of adults` : '–'],
+    ['Public transport', i => a.pt_m?.[i] != null ? `${dist(a.pt_m[i])}<span>${a.pt_per_hour[i] ? `${a.pt_per_hour[i]} an hour from stops within 400 m` : 'No regular stop within 400 m'}</span>` : '–'],
+    ['River or sea flood', i => a.flood_rs_pct?.[i] != null ? `${a.flood_rs_pct[i]}% of homes` : '–'],
+    ['Road noise', i => a.noise_road_pct?.[i] != null ? `${a.noise_road_pct[i]}% of postcodes` : '–'],
+    ['NO₂', i => a.no2_ugm3?.[i] != null ? `${a.no2_ugm3[i]} µg/m³` : '–'],
+    ['Radon', i => a.radon_class?.[i] ? RADON_BANDS[a.radon_class[i] - 1] : '–'],
+    ['Your filters', i => { const w = activeFilters().filter(f => !f.test(i)).map(f => f.why(i)); return w.length ? w.join(' · ') : 'Matches'; }],
+  ];
+  return `
+    <div class="head"><h2>Shortlist</h2></div>
+    <div class="where">${ids.length} ${ids.length === 1 ? 'area' : 'areas'} · saved on this device</div>
+    <div class="compare" style="--cols:${ids.length}">
+      <div class="c-label"></div>
+      ${ids.map(i => `<div class="c-head"><button type="button" class="c-name" data-fid="${i + 1}" title="${a.name[i]}">${areaName(i)}<span class="c-where">${rep.has(areaName(i)) ? a.name[i] : a.lads[a.lad[i]]} · ${a.outcode[i] ?? ''}</span></button>
+        <button type="button" class="c-remove" data-save="${i + 1}" aria-label="Remove ${areaName(i)} from shortlist" title="Remove"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m2 2 8 8M10 2l-8 8" stroke-linecap="round"/></svg></button></div>`).join('')}
+      ${rows.map(([label, f]) => `<div class="c-label">${label}</div>${ids.map(i => `<div class="c-cell">${f(i)}</div>`).join('')}`).join('')}
+    </div>
+    <div class="c-actions">
+      <button type="button" class="pill" data-action="share">Copy share link</button>
+      <button type="button" class="pill quiet" data-action="clear">Clear shortlist</button>
+      <span class="status" id="share-status" role="status" aria-live="polite"></span>
+    </div>`;
+}
+
+// "More like this": distance between areas on standardised features. Census measures join this list
+// when that layer lands; missing values sit at the national mean so they never pull areas together.
+const SIMILAR_FEATURES = [
+  ...['imd_decile', ...DOMAINS.map(([k]) => k)].map(k => [k, 1]),
+  ['logprice', 2], ['crime_decile', 1], ['prim_ok', 0.5], ['gigabit', 0.5],
+  ['median_age', 1.5], ['pct_families', 1], ['pct_students', 1.5], ['pct_owned', 1], ['pct_private_rent', 1], ['logdensity', 1],
+];
+let simMatrix = null;
+function similarity() {
+  if (simMatrix) return simMatrix;
+  const n = attrs.price.length, cols = SIMILAR_FEATURES.map(([k, w]) => {
+    const raw = k === 'logprice' ? attrs.price.map(v => v ? Math.log(v) : null)
+      : k === 'logdensity' ? (attrs.density_pph ?? []).map(v => v != null ? Math.log(v + 0.1) : null) : (attrs[k] ?? []);
+    if (!raw.length) return new Float32Array(attrs.price.length);
+    const vals = raw.filter(v => v != null), mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / vals.length) || 1;
+    return Float32Array.from(raw, v => v == null ? 0 : w * (v - mean) / sd);
+  });
+  return simMatrix = { n, cols };
+}
+function similarTo(i, onlyMatching) {
+  const { n, cols } = similarity(), out = [];
+  const keep = onlyMatching ? new Set(state.scan.match) : null;
+  for (let j = 0; j < n; j++) {
+    if (j === i || (keep && !keep.has(j))) continue;
+    let d = 0;
+    for (const c of cols) { const x = c[i] - c[j]; d += x * x; }
+    out.push([j, d]);
+  }
+  return out.sort((a, b) => a[1] - b[1]);
+}
+state.simLimit = 30; state.simOnlyMatching = true;
+function similarHTML() {
+  const i = state.simOf - 1, F = state.scan.F;
+  const list = similarTo(i, state.simOnlyMatching && F.length > 0).slice(0, state.simLimit);
+  const rep = repeatedNames([i, ...list.map(([j]) => j)]);
+  return `
+    ${backBtn()}
+    <div class="head"><h2>Similar to ${areaName(i)}</h2></div>
+    <div class="where">Closest match on deprivation, price, who lives there, crime, schools and broadband</div>
+    ${F.length ? `<label class="near-toggle sim-toggle"><input type="checkbox" id="sim-only" ${state.simOnlyMatching ? 'checked' : ''}>Only areas that match my filters</label>` : ''}
+    <ol class="results">${list.map(([j]) => resultRow(j, '', rep)).join('')}</ol>
+    ${list.length === state.simLimit ? '<button type="button" class="more" data-action="more-sim">Show 30 more</button>' : ''}`;
+}
+
+function renderBox(animate = true) {
+  const box = $('profile'), el = $('detail');
+  const open = state.view === 'profile' ? !!state.selectedProps : !!state.view;
+  document.body.classList.toggle('profile-open', open);
+  renderSchoolMap();
+  if (!open) { box.hidden = true; el.innerHTML = ''; return; }
+  const scrollTop = box.scrollTop;
+  el.innerHTML = state.view === 'profile' ? profileHTML(state.selectedProps) : state.view === 'schools' ? schoolsHTML()
+    : state.view === 'list' ? listHTML() : state.view === 'similar' ? similarHTML() : shortlistHTML();
+  // Section captions stay on one line; the full caption is in the tooltip
+  for (const c of el.querySelectorAll('details.section summary span')) c.title = c.textContent;
+  box.classList.toggle('wide', state.view === 'shortlist' && state.shortlist.length > 1);
+  if (animate) {
+    // A fresh box slides in; switching views inside an open box just refreshes the content
+    const target = box.hidden ? box : el;
+    box.hidden = false;
+    target.classList.remove('in'); void target.offsetWidth; target.classList.add('in');
+    box.scrollTop = 0;
+  } else box.scrollTop = scrollTop;
+  box.hidden = false;
+}
+function openView(view, back = null) { state.view = view; state.back = back; renderBox(); }
+
+// Pick the neighbourhood under a point, waiting for its tiles if they have not rendered yet
+function selectAt(at, tries = 8) {
+  // A shared link can resolve its postcode before the neighbourhood layer exists; wait for it
+  const f = map.getLayer('lsoa-fill') ? map.queryRenderedFeatures(map.project(at), { layers: ['lsoa-fill'] })[0] : null;
+  if (f) select(f);
+  else if (tries > 0) map.once('idle', () => selectAt(at, tries - 1));
+}
+
+function select(feature) {
+  if (feature) state.everSelected = true;
+  state.selected = feature ? feature.id : null;
+  if (map.getLayer('lsoa-selected')) map.setFilter('lsoa-selected', ['==', ['id'], state.selected ?? -1]);
+  // The tile builder moves fid into the feature id, so put it back on the properties
+  state.selectedProps = feature ? { ...feature.properties, fid: feature.id } : null;
+  if (feature) { state.back = ['list', 'shortlist', 'similar'].includes(state.view) ? state.view : state.back; state.view = 'profile'; }
+  else state.view = null;
+  renderBox();
+  renderControls();
+}
+
+// Add the data as soon as the style is parsed, without waiting for basemap tiles
+map.once('style.load', async () => {
+  for (const l of map.getStyle().layers) {
+    if (l.type === 'background') map.setPaintProperty(l.id, 'background-color', '#010102');
+    else if (l.type === 'fill' && /water/.test(l.id)) map.setPaintProperty(l.id, 'fill-color', '#0a0b0e');
+    else if (l.type === 'fill') map.setPaintProperty(l.id, 'fill-opacity', 0.35);
+    else if (/^boundary|^waterway$/.test(l.id)) map.setLayoutProperty(l.id, 'visibility', 'none');
+    else if (l.type === 'line' && /^(tunnel|road|bridge)_/.test(l.id)) {
+      // Streets draw above the shading as fine dark lines, fading in from town zoom
+      const casing = /_case/.test(l.id);
+      map.setPaintProperty(l.id, 'line-color', '#0b0c0f');
+      map.setPaintProperty(l.id, 'line-opacity', casing ? 0 : ['interpolate', ['linear'], ['zoom'], 9, 0, 12, 0.6]);
+    }
+    else if (l.type === 'symbol') {
+      // Keep only place and road names, quiet and sentence-case, under the data
+      if (/^(waterway_label|watername_|place_country|place_state|place_continent|poi_)/.test(l.id)) {
+        map.setLayoutProperty(l.id, 'visibility', 'none'); continue;
+      }
+      const major = /^place_(city|capital|town)/.test(l.id);
+      // Small places only once zoomed in; cities from regional zoom (keeps Glasgow and Dublin off the national view)
+      if (/^place_suburbs/.test(l.id)) map.setLayerZoomRange(l.id, 13, 24);
+      else if (/^place_(villages|hamlet)/.test(l.id)) map.setLayerZoomRange(l.id, 12, 24);
+      else if (major) map.setLayerZoomRange(l.id, 7.5, 24);
+      map.setLayoutProperty(l.id, 'text-transform', 'none');
+      map.setLayoutProperty(l.id, 'text-letter-spacing', 0);
+      map.setLayoutProperty(l.id, 'text-font', [major ? 'Open Sans Semibold' : 'Open Sans Regular']);
+      map.setPaintProperty(l.id, 'text-color', major ? '#d0d6e0' : '#8a8f98');
+      if (l.layout?.['icon-image']) map.setPaintProperty(l.id, 'icon-opacity', 0);
+      if (/^roadname_/.test(l.id)) {
+        // Street names: white with a firm dark edge so they read on any shade
+        map.setPaintProperty(l.id, 'text-color', '#f7f8f8');
+        map.setPaintProperty(l.id, 'text-halo-color', 'rgba(1,1,2,0.85)');
+        map.setPaintProperty(l.id, 'text-halo-width', 1.5);
+        map.setPaintProperty(l.id, 'text-halo-blur', 0.25);
+        map.setLayoutProperty(l.id, 'text-size', ['interpolate', ['linear'], ['zoom'], 13, 11, 17, 14]);
+        continue;
+      }
+      map.setPaintProperty(l.id, 'text-halo-color', 'rgba(1,1,2,0.5)');
+      map.setPaintProperty(l.id, 'text-halo-width', 1.5);
+      map.setPaintProperty(l.id, 'text-halo-blur', 1.5);
+    }
+  }
+  for (const l of map.getStyle().layers)
+    if (l.type === 'symbol' && l.source === 'carto' && l['source-layer'] === 'place') PLACE_FILTERS[l.id] = toExpr(map.getFilter(l.id)) ?? null;
+  // Newly loaded or uncovered names are judged once the map settles
+  map.on('moveend', () => { if (placeShown) map.once('idle', () => updatePlaceLabels()); });
+  const firstSymbol = map.getStyle().layers.find(l => l.type === 'symbol')?.id;
+  // Shading sits under the street network, so streets and their names stay on top
+  const firstRoad = map.getStyle().layers.find(l => l.type === 'line' && /^(tunnel|road|bridge)_/.test(l.id))?.id ?? firstSymbol;
+  map.addSource('lsoa', { type: 'vector', url: 'pmtiles://' + new URL('data/lsoa.pmtiles', location.href) });
+  map.addLayer({ id: 'lsoa-fill', type: 'fill', source: 'lsoa', 'source-layer': 'lsoa',
+    paint: { 'fill-color': '#000', 'fill-opacity': 0, 'fill-opacity-transition': { duration: 200 } } }, firstRoad);
+  map.addLayer({ id: 'lsoa-line', type: 'line', source: 'lsoa', 'source-layer': 'lsoa', minzoom: 11,
+    paint: { 'line-color': '#010102', 'line-width': 0.5, 'line-opacity': 0.7 } }, firstRoad);
+  // Buildings stay under the shading; only streets and names sit above it
+  for (const id of ['building', 'building-top']) if (map.getLayer(id)) map.moveLayer(id, 'lsoa-fill');
+  map.addLayer({ id: 'lsoa-hover', type: 'line', source: 'lsoa', 'source-layer': 'lsoa',
+    paint: { 'line-color': '#d0d6e0', 'line-width': 1,
+             'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0] } });
+  map.addLayer({ id: 'lsoa-selected', type: 'line', source: 'lsoa', 'source-layer': 'lsoa',
+    filter: ['==', ['id'], -1], paint: { 'line-color': '#f7f8f8', 'line-width': 2 } }, firstSymbol);
+  map.addImage('pin', pinImage(), { pixelRatio: 2 });
+  map.addSource('pin', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  map.addLayer({ id: 'pin', type: 'symbol', source: 'pin',
+    layout: { 'icon-image': 'pin', 'icon-allow-overlap': true, 'symbol-sort-key': 0 } });
+  addSchoolLayers();
+  await dataReady;
+  render();
+});
+dataReady.then(renderControls);
+
+
+// The open area's schools on the map: a faint ring at the counting distance, then one point per school,
+// filled when positively rated and hollow otherwise. Monochrome, so the fill stays the only colour field.
+const EMPTY = { type: 'FeatureCollection', features: [] };
+function addSchoolLayers() {
+  map.addSource('school-ring', { type: 'geojson', data: EMPTY });
+  map.addSource('schools', { type: 'geojson', data: EMPTY, promoteId: 'urn' });
+  map.addLayer({ id: 'school-ring', type: 'line', source: 'school-ring',
+    paint: { 'line-color': '#d0d6e0', 'line-width': 1, 'line-opacity': 0.4 } }, 'pin');
+  const ok = ['get', 'ok'], r = (add = 0) => ['interpolate', ['linear'], ['zoom'], 10, 3 + add, 13, 4 + add, 16, 5.5 + add];
+  map.addLayer({ id: 'school-pt', type: 'circle', source: 'schools',
+    paint: { 'circle-radius': r(), 'circle-color': ['case', ok, '#f7f8f8', '#010102'],
+             'circle-stroke-color': ['match', ['get', 'st'], '1', '#010102', '0', '#f7f8f8', '#62666d'],
+             'circle-stroke-width': ['match', ['get', 'st'], '1', 1, '0', 1.5, 1] } }, 'pin');
+  // The school under the pointer or the list row in focus: a ring round its point, and its name at any zoom
+  map.addLayer({ id: 'school-hl', type: 'circle', source: 'schools',
+    paint: { 'circle-radius': r(4), 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#f7f8f8', 'circle-stroke-width': 1.5,
+             'circle-stroke-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 1, 0] } }, 'pin');
+  const label = { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'], 'text-size': 11, 'text-max-width': 10,
+    'text-variable-anchor': ['left', 'right'], 'text-radial-offset': 0.9, 'text-justify': 'auto' };
+  const labelPaint = { 'text-color': '#d0d6e0', 'text-halo-color': 'rgba(1,1,2,0.85)', 'text-halo-width': 1.5 };
+  map.addLayer({ id: 'school-label', type: 'symbol', source: 'schools', minzoom: 14,
+    layout: { ...label, 'text-optional': true }, paint: labelPaint }, 'pin');
+  map.addLayer({ id: 'school-hl-label', type: 'symbol', source: 'schools', filter: ['==', ['get', 'urn'], -1],
+    layout: { ...label, 'text-allow-overlap': true }, paint: { ...labelPaint, 'text-color': '#f7f8f8' } });
+  map.on('mouseenter', 'school-pt', e => { map.getCanvas().style.cursor = 'pointer'; setSchoolHover(e.features[0].properties.urn); });
+  map.on('mouseleave', 'school-pt', () => { map.getCanvas().style.cursor = ''; setSchoolHover(null); });
+  map.on('click', 'school-pt', e => openSchool(e.features[0].properties.urn));
+}
+// A circle of radius km round a point, close enough to the British National Grid test at this scale
+function ringAround([lon, lat], km) {
+  const dy = km / 111.32, dx = dy / Math.cos(lat * Math.PI / 180);
+  return { type: 'Polygon', coordinates: [Array.from({ length: 97 }, (_, k) => {
+    const t = k / 96 * 2 * Math.PI; return [lon + dx * Math.cos(t), lat + dy * Math.sin(t)]; })] };
+}
+let schoolMapKey = '';
+// Schools reach the map only while a school list is open: opening the list is the opt-in
+function renderSchoolMap() {
+  if (!map.getSource('schools')) return;
+  const p = state.view === 'schools' ? state.selectedProps : null;
+  if (p && !schoolData && !schoolsTried) {
+    loadSchools().then(() => { if (state.view === 'schools') renderBox(false); renderSchoolMap(); });
+    return;
+  }
+  const key = p && schoolData ? `${p.fid}${state.schoolPhase}` : '';
+  if (key === schoolMapKey) return;
+  schoolMapKey = key; setSchoolHover(null);
+  if (!key) { map.getSource('schools').setData(EMPTY); map.getSource('school-ring').setData(EMPTY); return; }
+  const S = schoolData, ph = state.schoolPhase, i = p.fid - 1;
+  map.getSource('schools').setData({ type: 'FeatureCollection', features: schoolsNear(p.fid, ph).map(({ j }) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: [S.lon[j], S.lat[j]] },
+    properties: { urn: S.urn[j], name: S.name[j], ok: S.ok[j] === '1', st: S.ok[j] } })) });
+  map.getSource('school-ring').setData(ringAround([attrs.lon[i], attrs.lat[i]], ph === 'p' ? S.primary_km : S.secondary_km));
+}
+// One school highlighted in both places: its point on the map and its row in the list
+let schoolHovered = null;
+function setSchoolHover(urn) {
+  if (schoolHovered === urn || !map.getSource('schools')) return;
+  if (schoolHovered != null) map.setFeatureState({ source: 'schools', id: schoolHovered }, { hover: false });
+  schoolHovered = urn;
+  if (urn != null) map.setFeatureState({ source: 'schools', id: urn }, { hover: true });
+  // The highlighted name draws on its own layer at any zoom, so the regular label steps aside
+  map.setFilter('school-hl-label', ['==', ['get', 'urn'], urn ?? -1]);
+  map.setFilter('school-label', ['!=', ['get', 'urn'], urn ?? -1]);
+  for (const li of $('detail').querySelectorAll('.school')) li.classList.toggle('hl', +li.dataset.urn === urn);
+}
+// The profile's camera, kept while a school list has the map zoomed out to its ring
+let profileCamera = null;
+function backToProfile() {
+  state.view = 'profile'; renderBox();
+  if (profileCamera) map.easeTo({ ...profileCamera, duration: 450 });
+  profileCamera = null;
+}
+function openSchools(phase) {
+  if (state.view === 'profile') profileCamera = { center: map.getCenter(), zoom: map.getZoom() };
+  state.schoolPhase = phase; state.view = 'schools'; renderBox();
+  // Bring the whole ring into view between the panels
+  const p = state.selectedProps, i = p.fid - 1;
+  const ring = ringAround([attrs.lon[i], attrs.lat[i]], phase === 'p' ? meta.primary_km : meta.secondary_km).coordinates[0];
+  const lons = ring.map(c => c[0]), lats = ring.map(c => c[1]);
+  // The map already carries the controls panel's padding; add the profile box's and a margin
+  const want = panelPadding(true), has = map.getPadding();
+  const padding = Object.fromEntries(['top', 'bottom', 'left', 'right'].map(k => [k, Math.max(0, want[k] - has[k]) + 24]));
+  map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding, maxZoom: 15, duration: 600 });
+}
+// A point on the map brings its row in the open list into view
+function openSchool(urn) {
+  const li = $('detail').querySelector(`.school[data-urn="${urn}"]`);
+  li?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  setSchoolHover(null); setSchoolHover(urn);
+}
+
+function setHover(id) {
+  if (state.hovered === id) return;
+  if (state.hovered != null) map.setFeatureState({ source: 'lsoa', sourceLayer: 'lsoa', id: state.hovered }, { hover: false });
+  state.hovered = id;
+  if (id != null) map.setFeatureState({ source: 'lsoa', sourceLayer: 'lsoa', id }, { hover: true });
+}
+map.on('click', 'lsoa-fill', e => {
+  // A school point sits above the fill; its own handler opens the school list instead
+  if (map.queryRenderedFeatures(e.point, { layers: ['school-pt'] }).length) return;
+  pin.remove(); state.searchOutcode = null;
+  select(e.features[0]);
+  // Centre the picked area in the open space between the panels
+  map.easeTo({ center: e.lngLat, padding: panelPadding(true), duration: 450 });
+});
+map.on('mousemove', 'lsoa-fill', e => { map.getCanvas().style.cursor = 'pointer'; setHover(e.features[0]?.id ?? null); });
+map.on('mouseleave', 'lsoa-fill', () => { map.getCanvas().style.cursor = ''; setHover(null); });
+function closeProfile() {
+  pin.remove(); state.searchOutcode = null; state.back = null;
+  select(null);
+  map.easeTo({ padding: panelPadding(), duration: 350 });
+}
+function goBack() {
+  const to = state.back; state.back = null;
+  state.selected = null; state.selectedProps = null;
+  if (map.getLayer('lsoa-selected')) map.setFilter('lsoa-selected', ['==', ['id'], -1]);
+  pin.remove();
+  openView(to);
+  renderControls();
+}
+// Fly to an area from a list and open its profile, keeping the way back
+function openArea(fid, back) {
+  const i = fid - 1, at = [attrs.lon[i], attrs.lat[i]];
+  state.searchOutcode = null; state.view = back; pin.remove();
+  map.flyTo({ center: at, zoom: Math.max(map.getZoom(), 13.5), padding: panelPadding(true), duration: 900 });
+  map.once('moveend', () => selectAt(at));
+}
+function toggleSave(fid) {
+  state.shortlist = saved(fid) ? state.shortlist.filter(f => f !== fid) : [...state.shortlist, fid];
+  saveShortlist();
+  renderControls();
+  for (const b of document.querySelectorAll(`[data-save="${fid}"]`)) {
+    b.setAttribute('aria-pressed', saved(fid));
+    b.title = `${saved(fid) ? 'Remove from' : 'Add to'} shortlist`;
+  }
+  if (state.view === 'shortlist') renderBox(false);
+}
+function shareLink() {
+  const q = new URLSearchParams();
+  if (state.colour !== 'imd_decile') q.set('colour', state.colour);
+  for (const id of ['budget', 'floor', 'crime', 'schools', 'gigabit', 'pt', 'shop', 'flood', 'noise', 'families', 'students']) {
+    const el = $(id); if (el.value !== el.defaultValue) q.set(id, el.value);
+  }
+  if (state.shortlist.length) q.set('areas', state.shortlist.join(','));
+  if (state.places.length) q.set('to', state.places.map(pl => `${pl.label.replace(' ', '')}:${pl.max}`).join(','));
+  return `${location.origin}${location.pathname}?${String(q).replace(/%2C/g, ',').replace(/%3A/g, ':')}`;
+}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !state.view) return;
+  if (state.view === 'schools') backToProfile();
+  else if (state.view === 'profile' && state.back) goBack();
+  else if (state.view === 'profile') closeProfile();
+  else { state.view = null; renderBox(); map.easeTo({ padding: panelPadding(), duration: 350 }); }
+});
+$('close').onclick = () => {
+  if (state.view === 'profile' || state.view === 'schools') closeProfile();
+  else { state.view = null; state.back = null; renderBox(); }
+};
+// Panel-level actions (count line, shortlist button)
+document.querySelector('aside.controls').addEventListener('click', e => {
+  const a = e.target.closest('[data-action]')?.dataset.action;
+  if (a === 'list') { state.listLimit = 50; state.nearLimit = 20; openView('list'); }
+  if (a === 'shortlist') openView('shortlist');
+  if (a === 'clear-filters') clearFilters();
+  if (a === 'home') { clearFilters(); map.fitBounds(ENGLAND, { padding: 20, duration: 600 }); }
+  if (a === 'tour') tour.open ? tour.close() : tour.start();
+});
+// Every filter back to "any", travel places removed; the colour choice, profile and shortlist stay
+function clearFilters() {
+  for (const id of ['budget', 'floor', 'crime', 'schools', 'gigabit', 'pt', 'shop', 'flood', 'noise', 'families', 'students']) {
+    const el = $(id); el.value = el.defaultValue; el.dispatchEvent(new Event('input'));
+  }
+  state.places = [];
+  renderPlaces();
+  render();
+}
+document.querySelector('aside.controls').addEventListener('change', e => {
+  if (e.target.id === 'near') { state.showNear = e.target.checked; renderMap(); schedulePlaceLabels(); }
+});
+$('more-filters').addEventListener('toggle', e => {
+  if (e.target.open) e.target.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+});
+$('detail').addEventListener('toggle', e => {
+  const sec = e.target.dataset?.section; if (!sec) return;
+  e.target.open ? state.openSections.add(sec) : state.openSections.delete(sec);
+}, true);
+$('detail').addEventListener('change', e => {
+  if (e.target.id === 'sort') { state.sort = e.target.value; state.listLimit = 50; renderBox(false); }
+  if (e.target.id === 'sim-only') { state.simOnlyMatching = e.target.checked; renderBox(false); }
+});
+$('detail').addEventListener('mouseover', e => {
+  const r = e.target.closest('[data-fid]'); if (r) setHover(+r.dataset.fid);
+  if (state.view === 'schools') setSchoolHover(+e.target.closest('.school')?.dataset.urn || null);
+});
+$('detail').addEventListener('focusin', e => { const s = e.target.closest('.school'); if (s) setSchoolHover(+s.dataset.urn); });
+$('detail').addEventListener('mouseleave', () => { setHover(null); setSchoolHover(null); });
+
+$('detail').addEventListener('click', e => {
+  const save = e.target.closest('[data-save]');
+  if (save) { toggleSave(+save.dataset.save); return; }
+  const area = e.target.closest('[data-fid]');
+  if (area) { openArea(+area.dataset.fid, state.view); return; }
+  const action = e.target.closest('[data-action]')?.dataset.action;
+  if (action === 'back') return goBack();
+  if (action === 'schools') return openSchools(e.target.closest('[data-phase]').dataset.phase);
+  if (action === 'to-profile') return backToProfile();
+  if (action === 'part') { const n = $('part-note'); n.hidden = !n.hidden; e.target.closest('.part').setAttribute('aria-expanded', !n.hidden); return; }
+  // Tapping a school row (outside its links) finds it on the map
+  const school = e.target.closest('.school');
+  if (school && !e.target.closest('a')) {
+    const urn = +school.dataset.urn, f = map.querySourceFeatures('schools').find(f => f.properties.urn === urn);
+    setSchoolHover(urn);
+    if (f) map.easeTo({ center: f.geometry.coordinates, padding: panelPadding(true), duration: 450 });
+    return;
+  }
+  if (action === 'more') { state.listLimit += 50; return renderBox(false); }
+  if (action === 'more-near') { state.nearLimit += 20; return renderBox(false); }
+  if (action === 'more-sim') { state.simLimit += 30; return renderBox(false); }
+  if (action === 'similar') { state.simOf = state.selectedProps.fid; state.simLimit = 30; state.back = null; return openView('similar', null); }
+  if (action === 'clear') { state.shortlist = []; saveShortlist(); renderControls(); return renderBox(false); }
+  if (action === 'share') {
+    const msg = $('share-status');
+    const fallback = () => { msg.textContent = shareLink(); };
+    if (navigator.clipboard) navigator.clipboard.writeText(shareLink()).then(() => { msg.textContent = 'Link copied'; }, fallback);
+    else fallback();
+    return;
+  }
+  const b = e.target.closest('[data-layer]');
+  if (!b) return;
+  $('colour').value = b.dataset.layer;
+  $('colour').dispatchEvent(new Event('change'));
+});
+$('colour').addEventListener('change', e => {
+  state.colour = e.target.value;
+  if (e.target.value in DEP_NAMES) state.depMeasure = e.target.value;
+  render();
+});
+$('about-more').addEventListener('click', e => {
+  const open = $('about').classList.toggle('open');
+  e.target.textContent = open ? 'Less' : 'More'; e.target.setAttribute('aria-expanded', open);
+  // Keep Less in view above the sheet's sticky count band
+  if (open) e.target.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+});
+$('budget').addEventListener('input', e => { state.budget = BUDGETS[+e.target.value]; render(); });
+$('floor').addEventListener('input', e => { state.floor = DEP_FLOORS[+e.target.value]; render(); });
+$('crime').addEventListener('input', e => { state.crimeFloor = DEP_FLOORS[+e.target.value]; render(); });
+$('schools').addEventListener('input', e => { state.schoolsMin = +e.target.value; render(); });
+$('gigabit').addEventListener('input', e => { state.gigabitMin = GIGABIT[+e.target.value]; render(); });
+$('pt').addEventListener('input', e => { state.ptMax = PT[+e.target.value]; render(); });
+$('shop').addEventListener('input', e => { state.shopMax = SHOP[+e.target.value]; render(); });
+$('flood').addEventListener('input', e => { state.floodMax = FLOOD[+e.target.value]; render(); });
+$('noise').addEventListener('input', e => { state.noiseMax = NOISE[+e.target.value]; render(); });
+$('families').addEventListener('input', e => { state.familiesMin = FAMILIES[+e.target.value]; render(); });
+$('students').addEventListener('input', e => { state.studentsMax = STUDENTS[+e.target.value]; render(); });
+
+function renderPlaces() {
+  $('places').innerHTML = state.places.map((pl, k) => `
+    <div class="place">
+      <label class="label" for="place-${k}"><span>To ${pl.label}</span><b>${pl.max} min</b>
+        <button type="button" class="place-remove" data-remove-place="${k}" aria-label="Remove ${pl.label}" title="Remove"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m2 2 8 8M10 2l-8 8" stroke-linecap="round"/></svg></button></label>
+      <input type="range" id="place-${k}" data-place="${k}" min="10" max="120" step="5" value="${pl.max}" aria-valuetext="${pl.max} minutes or less">
+    </div>`).join('');
+  for (const el of $('places').querySelectorAll('input')) el.style.setProperty('--fill', `${(el.value - 10) / 110 * 100}%`);
+  $('place-form').hidden = state.places.length >= 2;
+  const group = $('travel-group');
+  group.hidden = !state.places.length;
+  group.innerHTML = state.places.length ? `<option value="travel">Travel time to ${state.places[0].label}</option>` : '';
+  if (!state.places.length && state.colour === 'travel') { $('colour').value = 'imd_decile'; state.colour = 'imd_decile'; }
+}
+async function addPlace(pc, max = 45) {
+  const status = $('place-status');
+  status.className = 'status'; status.textContent = 'Finding place…';
+  const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`).then(r => r.json()).catch(() => null);
+  if (!r || r.status !== 200) { status.className = 'status err'; status.textContent = r ? `We couldn’t find ${pc.toUpperCase()}.` : 'Postcode lookup is unavailable.'; return; }
+  if (r.result.country !== 'England') { status.className = 'status err'; status.textContent = `${r.result.postcode} is outside England.`; return; }
+  await dataReady;
+  try {
+    const fid = nearestArea(r.result.longitude, r.result.latitude);
+    const row = await travelRow(fid);
+    // Bus-only times (when published) let each journey say whether a train is involved
+    const busRow = TT?.bus_only_file ? await travelRow(fid, TT.bus_only_file).catch(() => null) : null;
+    state.places.push({ label: r.result.postcode, fid, max, row, busRow, lon: r.result.longitude, lat: r.result.latitude });
+    status.textContent = '';
+    $('place').value = '';
+    renderPlaces();
+    render();
+    // Frame the areas within reach of the new place
+    let w = 180, so = 90, e = -180, n = -90;
+    for (let i = 0; i < row.length; i++) if (row[i] <= max) {
+      w = Math.min(w, attrs.lon[i]); e = Math.max(e, attrs.lon[i]); so = Math.min(so, attrs.lat[i]); n = Math.max(n, attrs.lat[i]);
+    }
+    if (e >= w) map.fitBounds([[w, so], [e, n]], { padding: 60, maxZoom: 12, duration: 800 });
+  } catch (err) { status.className = 'status err'; status.textContent = err.message; }
+}
+$('place-form').addEventListener('submit', e => { e.preventDefault(); const v = $('place').value.trim(); if (v) addPlace(v); });
+$('places').addEventListener('input', e => {
+  const k = e.target.dataset.place; if (k == null) return;
+  const pl = state.places[+k]; pl.max = +e.target.value;
+  e.target.style.setProperty('--fill', `${(pl.max - 10) / 110 * 100}%`);
+  e.target.setAttribute('aria-valuetext', `${pl.max} minutes or less`);
+  e.target.closest('.place').querySelector('b').textContent = `${pl.max} min`;
+  scheduleRender();
+});
+$('places').addEventListener('click', e => {
+  const k = e.target.closest('[data-remove-place]')?.dataset.removePlace; if (k == null) return;
+  state.places.splice(+k, 1); renderPlaces(); render();
+});
+// Travel sliders rebuild id-set expressions; coalesce rapid input into one render per frame
+let renderQueued = false;
+function scheduleRender() { if (!renderQueued) { renderQueued = true; requestAnimationFrame(() => { renderQueued = false; render(); }); } }
+
+$('search').addEventListener('submit', async e => {
+  e.preventDefault();
+  const input = $('postcode'), status = $('search-status');
+  const pc = input.value.trim();
+  if (!pc) return;
+  status.className = 'status'; status.textContent = 'Finding postcode…';
+  input.setAttribute('aria-busy', 'true');
+  const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`).then(r => r.json()).catch(() => null);
+  input.removeAttribute('aria-busy');
+  if (!r) { status.className = 'status err'; status.textContent = 'Postcode lookup is unavailable. Check your connection and try again.'; return; }
+  if (r.status !== 200) { status.className = 'status err'; status.textContent = `We couldn’t find ${pc.toUpperCase()}. Check it and try again.`; return; }
+  if (r.result.country !== 'England') { status.className = 'status err'; status.textContent = `${r.result.postcode} is in ${r.result.country}. Whereabouts covers England only.`; return; }
+  status.textContent = '';
+  const at = [r.result.longitude, r.result.latitude];
+  state.searchOutcode = r.result.outcode;
+  pin.set(at);
+  map.flyTo({ center: at, zoom: 14, padding: panelPadding(true) });
+  map.once('moveend', () => selectAt(at));
+});
+
+// Shareable state: ?mode=price&measure=d_crime&budget=8&floor=2&postcode=YO1+7HH
+const qs = new URLSearchParams(location.search);
+const colourParam = qs.get('colour') ?? (qs.get('mode') === 'price' ? 'price' : qs.get('measure'));
+if (colourParam && $('colour').querySelector(`option[value="${CSS.escape(colourParam)}"]`)) {
+  $('colour').value = colourParam; $('colour').dispatchEvent(new Event('change'));
+}
+for (const id of ['budget', 'floor', 'crime', 'schools', 'gigabit', 'pt', 'shop', 'flood', 'noise', 'families', 'students']) if (qs.has(id)) { $(id).value = qs.get(id); $(id).dispatchEvent(new Event('input')); }
+if (qs.has('to')) (async () => {
+  for (const part of qs.get('to').split(',').slice(0, 2)) {
+    const [pc, max] = part.split(':');
+    await addPlace(pc, Math.min(120, Math.max(10, +max || 45)));
+  }
+})();
+if (qs.has('areas')) {
+  const ids = qs.get('areas').split(',').map(Number).filter(n => n >= 1 && n <= 33755);
+  state.shortlist = [...new Set([...state.shortlist, ...ids])]; saveShortlist();
+  dataReady.then(() => { renderControls(); openView('shortlist'); });
+}
+if (qs.has('postcode')) dataReady.then(() => { $('postcode').value = qs.get('postcode'); $('search').requestSubmit(); });
+
+// Guide: a walk through every feature on the real controls, which stay usable while lit.
+// The profile steps open an example area (unless one is already open) and close it again at the end.
+const TOUR_KEY = 'whereabouts.tour';
+const TOUR_SAMPLE = [-1.5795, 53.8195];  // Headingley, Leeds: a profile with every section filled
+const all = sel => [...document.querySelectorAll(sel)];
+const withLabel = sel => all(sel).flatMap(el => [el.previousElementSibling, el].filter(Boolean));
+const tap = () => matchMedia('(pointer: coarse)').matches ? 'tap' : 'click';
+const phone = () => innerWidth <= 640;
+const tour = {
+  open: false, i: 0, token: 0, sample: null, seenFid: null, pending: null, moreWasOpen: null,
+  steps: [
+    { at: () => all('.search'), title: 'Start from a place',
+      body: () => `Type a postcode to fly there and open its neighbourhood, or move around the map and ${tap()} any area.` },
+    { at: () => all('.colour'), title: 'Choose what the map shows',
+      body: () => `Shade every area by overall deprivation or any of its seven domains, price, who lives there, environment, what’s nearby, or travel time once you’ve added a place. ${
+        phone() ? 'The key at the foot of the panel' : 'The legend'} greys out the shades your filters rule out.` },
+    { at: () => all('.travel'), title: 'Add where you travel to',
+      body: () => 'Add up to two postcodes, such as work or family. Each gets a slider for the longest journey you’d make from the middle of each area, by public transport and walking, leaving around 8am on a weekday.' },
+    { at: () => all('.filters > .filter'), title: 'Set your limits',
+      body: () => 'Median price, deprivation, recorded crime, positively rated primary schools within 2 km and gigabit broadband. Each starts at any; move one and the areas outside it fade from the map.' },
+    { at: () => all('#more-filters > summary, #more-filters .filter'), more: true, title: 'More filters',
+      body: () => 'Distance to public transport or a supermarket, river and sea flood risk, road noise, and the share of households with children or of students.' },
+    { at: () => all('.count'), title: 'See what fits',
+      body: () => `The count covers all ${num(attrs?.price.length ?? 33755)} neighbourhoods in England, and View list ranks the matches. Once you set filters, Clear filters starts over; with two or more, near misses show areas that narrowly miss one.` },
+    { at: () => all('#detail .head, #detail .where, #detail .stats'), profile: true, title: 'Read an area’s profile',
+      body: () => `${tour.sample ? 'This is an example area. ' : ''}Each profile opens with the neighbourhood’s name, council and postcode district, how deprived it is and its median house price.` },
+    { at: () => withLabel('#detail .facts.around'), profile: true, title: 'What’s around',
+      body: () => 'Crime, schools, public transport, the nearest station, GP and supermarket, broadband and your journey times. Labels with a dotted underline recolour the map by that measure.' },
+    { at: () => all('#detail [data-action=schools]'), profile: true, title: 'Every school nearby',
+      body: () => 'Open primaries or secondaries to list each school counted, with its latest Ofsted outcome, links to its reports and performance, and its place on the map.' },
+    { at: () => withLabel('#detail .homes'), profile: true, title: 'Homes for sale and to rent',
+      body: () => 'No listings are shown here. These links open Rightmove, Zoopla, OnTheMarket and OpenRent searches for the area’s postcode district.' },
+    { at: () => all('#detail details.section'), profile: true, title: 'Go deeper',
+      body: () => 'Who lives here (age, households, students, tenure), the environment (flood, road noise, air quality, radon) and where the area sits on each of the seven deprivation domains.' },
+    { at: () => all('#detail .similar-link'), profile: true, title: 'Find similar areas',
+      body: () => 'Lists the closest matches elsewhere in England on deprivation, price, who lives there, crime, schools and broadband, with an option to keep only those that fit your filters.' },
+    { at: () => all('#detail .save'), profile: true, title: 'Build a shortlist',
+      body: () => 'Bookmark areas as you go. A Shortlist button then appears beside the logo to compare them side by side and copy a link that shares the list with your filters.' },
+    { at: () => all('.brand'), title: 'Start again any time',
+      body: () => 'The logo clears every filter and travel place and returns to all of England. This guide stays behind the question mark.' },
+  ],
+  start(i = 0) {
+    try { localStorage.setItem(TOUR_KEY, 'seen'); } catch {}
+    this.open = true; this.sample = null;
+    this.moreWasOpen = $('more-filters').open;
+    $('tour-hole').hidden = $('tour-card').hidden = false;
+    document.querySelector('.help').setAttribute('aria-expanded', 'true');
+    $('tour-marks').innerHTML = '<i></i>'.repeat(this.steps.length);
+    this.go(i, true);
+    $('tour-card').focus({ preventScroll: true });
+  },
+  async go(i, first = false) {
+    const token = ++this.token;
+    this.i = i;
+    const s = this.steps[i], n = this.steps.length, last = i === n - 1;
+    $('tour-step').textContent = `${i + 1} of ${n}`;
+    $('tour-title').textContent = s.title;
+    [...$('tour-marks').children].forEach((m, k) => { m.className = k < i ? 'done' : k === i ? 'now' : ''; });
+    $('tour-back').hidden = i === 0;
+    $('tour-skip').hidden = last;
+    $('tour-next').textContent = last ? 'Done' : 'Next';
+    if (document.activeElement?.hidden) $('tour-next').focus();
+    document.body.classList.toggle('tour-controls', !s.profile);
+    // The area showing as a controls step begins; a different one opening later is the user's own pick
+    this.seenFid = state.view === 'profile' ? state.selectedProps?.fid : null;
+    if (s.more) $('more-filters').open = true;
+    if (s.profile && !(state.view === 'profile' && state.selectedProps)) {
+      $('tour-body').textContent = 'Opening an example area…';
+      $('tour-hole').classList.add('idle');
+      if (!(await this.openSample()) || token !== this.token) return;
+    }
+    $('tour-hole').classList.remove('idle');
+    $('tour-body').textContent = s.body();
+    // Bring the whole lit group into view, clear of the pinned count band, its top winning when it is taller than the panel
+    aside.style.scrollPaddingTop = $('profile').style.scrollPaddingTop = '12px';
+    aside.style.scrollPaddingBottom = `${document.querySelector('.count').offsetHeight + 12}px`;
+    const els = s.at(); els.at(-1)?.scrollIntoView({ block: 'nearest' }); els[0]?.scrollIntoView({ block: 'nearest' });
+    this.place(!first);
+  },
+  // Opens the example area once, however many steps wait on it, and resolves when a profile shows (the example or
+  // one the user opens); says so after ten seconds and gives up after thirty
+  openSample() {
+    if (this.pending) return this.pending;
+    if (!attrs) return Promise.resolve(false);
+    const fid = this.sample = nearestArea(...TOUR_SAMPLE);
+    const camera = this.camera = { center: map.getCenter(), zoom: map.getZoom() };
+    // openArea's move, with the example kept clear of the card pinned at the top
+    const i = fid - 1, at = [attrs.lon[i], attrs.lat[i]];
+    state.searchOutcode = null; state.view = null; pin.remove();
+    map.flyTo({ center: at, zoom: Math.max(map.getZoom(), 13.5), duration: 900,
+      padding: { ...panelPadding(true), top: $('tour-card').offsetHeight + (phone() ? 16 : 32) } });
+    map.once('moveend', () => selectAt(at));
+    return this.pending = new Promise(resolve => {
+      const t0 = Date.now(), poll = setInterval(() => {
+        const ok = state.view === 'profile' && state.selectedProps && $('detail').querySelector('.head'), waited = Date.now() - t0;
+        if (waited > 10000 && !ok && this.steps[this.i].profile) $('tour-body').textContent = 'The example area is slow to load. Search a postcode to open a profile instead; the guide carries on from there.';
+        if (ok || waited > 30000 || !this.open) { clearInterval(poll); this.pending = null; resolve(!!ok && this.open); }
+        // Guide closed while the example was on its way: put it away when it lands
+        if (!this.open && waited < 30000) { const late = setInterval(() => {
+          if (state.view === 'profile' && state.selectedProps?.fid === fid) { clearInterval(late); closeProfile(); map.easeTo({ ...camera, padding: panelPadding(), duration: 600 }); }
+        }, 100); setTimeout(() => clearInterval(late), 15000); }
+      }, 100);
+    });
+  },
+  // Light the step's controls (padded, kept inside their panel) and set the card beside that panel
+  place(animate = false) {
+    if (!this.open) return;
+    const s = this.steps[this.i], hole = $('tour-hole'), card = $('tour-card');
+    const els = s.at().filter(el => el.getClientRects().length);
+    hole.style.transition = card.style.transition = animate ? '' : 'none';
+    const box = (s.profile ? $('profile') : aside).getBoundingClientRect();
+    if (!els.length || box.width === 0) { hole.classList.add('idle'); return; }
+    hole.classList.remove('idle');
+    // Anything above the count stops at the count band, which stays pinned over the panel's foot
+    const floor = s.profile || els[0].classList.contains('count') ? box.bottom : document.querySelector('.count').getBoundingClientRect().top;
+    // Light only what is wholly in view, so an edge never cuts through a control
+    let rs = els.map(el => el.getBoundingClientRect());
+    rs = rs.filter(x => x.top >= box.top - 1 && x.bottom <= floor + 1).length ? rs.filter(x => x.top >= box.top - 1 && x.bottom <= floor + 1) : rs.slice(0, 1);
+    const r = { left: Math.min(...rs.map(x => x.left)), right: Math.max(...rs.map(x => x.right)), top: Math.min(...rs.map(x => x.top)), bottom: Math.max(...rs.map(x => x.bottom)) };
+    const left = Math.max(r.left - 8, box.left + 6), right = Math.min(r.right + 8, box.right - 6);
+    const top = Math.max(r.top - 6, box.top + 6), bottom = Math.min(r.bottom + 6, floor - 6);
+    Object.assign(hole.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${Math.max(0, bottom - top)}px` });
+    if (innerWidth > 640) {
+      const a = aside.getBoundingClientRect(), w = Math.min(300, innerWidth - a.right - 32);
+      card.style.width = `${w}px`;
+      // Beside the profile the card also clears the zoom buttons, and sits at the top, above the area on the map
+      card.style.left = `${s.profile ? Math.max(a.right + 16, box.left - 52 - w) : a.right + 16}px`;
+      card.style.top = `${s.profile ? 16 : Math.min(Math.max(top, 16), innerHeight - card.offsetHeight - 16)}px`;
+    }
+  },
+  close() {
+    this.open = false; this.token++;
+    $('tour-hole').hidden = $('tour-card').hidden = true;
+    document.body.classList.remove('tour-controls');
+    aside.style.scrollPaddingTop = aside.style.scrollPaddingBottom = $('profile').style.scrollPaddingTop = '';
+    if (this.moreWasOpen === false) $('more-filters').open = false;
+    // Put away the example area if it is still the one showing
+    if (this.sample && state.view === 'profile' && state.selectedProps?.fid === this.sample) {
+      closeProfile();
+      map.easeTo({ ...this.camera, padding: panelPadding(), duration: 600 });
+    }
+    this.sample = null;
+    const help = document.querySelector('.help');
+    help.setAttribute('aria-expanded', 'false');
+    if ($('tour-card').contains(document.activeElement) || document.activeElement === document.body) help.focus({ preventScroll: true });
+  },
+};
+$('tour-next').onclick = () => tour.i < tour.steps.length - 1 ? tour.go(tour.i + 1) : tour.close();
+$('tour-back').onclick = () => tour.i > 0 && tour.go(tour.i - 1);
+$('tour-skip').onclick = () => tour.close();
+// Escape closes the guide (caught before the profile's own Escape); arrows step only while focus is in the card (sliders use them too)
+addEventListener('keydown', e => {
+  if (!tour.open) return;
+  if (e.key === 'Escape') { e.stopPropagation(); tour.close(); return; }
+  if (!$('tour-card').contains(document.activeElement)) return;
+  if (e.key === 'ArrowRight' && tour.i < tour.steps.length - 1) { e.preventDefault(); tour.go(tour.i + 1); }
+  if (e.key === 'ArrowLeft' && tour.i > 0) { e.preventDefault(); tour.go(tour.i - 1); }
+}, true);
+addEventListener('resize', () => tour.place());
+for (const el of [aside, $('profile')]) el.addEventListener('scroll', () => requestAnimationFrame(() => tour.place()), { passive: true });
+// Controls that grow or shrink (a place added, a section opened) move the lit area with them
+const tourResize = new ResizeObserver(() => {
+  // On a phone the profile hides during the controls steps, so an area tapped then moves the guide onto its profile
+  if (tour.open && phone() && !tour.steps[tour.i].profile && !tour.pending && state.view === 'profile' && state.selectedProps?.fid !== tour.seenFid)
+    return tour.go(tour.steps.findIndex(st => st.profile));
+  tour.place(true);
+});
+tourResize.observe(aside.querySelector('.scroll')); tourResize.observe($('detail'));
+// Opens once on a device's first plain visit (not on a shared link), and on ?tour
+let tourSeen = true;
+try { tourSeen = !!localStorage.getItem(TOUR_KEY); } catch {}
+if (qs.has('tour') || (!tourSeen && !location.search)) dataReady.then(() => setTimeout(() => { if (!tour.open) tour.start(); }, 500));
+</script>
+</body>
+</html>
